@@ -27,6 +27,7 @@ class HugeMajorVersionNumError(IrrationalVersionError):
 # versions that don't have those segments, to sort properly. An example
 # of versions in sort order ('highest' last):
 #   1.0b1                 ((1,0), ('b',1), ('z',))
+#   1.0dev                ((1,0), ('z',),  ('dev', 0))
 #   1.0.dev345            ((1,0), ('z',),  ('dev', 345))
 #   1.0                   ((1,0), ('z',),  ('z',))
 #   1.0.post256.dev345    ((1,0), ('z',),  ('z', 'post', 256, 'dev', 345))
@@ -50,7 +51,7 @@ _VERSION_RE = re.compile(r'''
                                    # 'rc'= alias for release candidate
         (?P<prerelversion>\d+(?:\.\d+)*)
     )?
-    (?P<postdev>(\.post(?P<post>\d+))?(\.dev(?P<dev>\d+))?)?
+    (?P<postdev>(\.post(?P<post>\d+))?(\.?dev(?P<dev>\d*))?)?
     $''', re.VERBOSE)
 
 
@@ -140,7 +141,7 @@ class NormalizedVersion:
                 if dev is None:
                     postdev.append(_FINAL_MARKER[0])
             if dev is not None:
-                postdev.extend(('dev', int(dev)))
+                postdev.extend(('dev', int(dev or 0)))
                 self.is_final = False
             parts.append(tuple(postdev))
         else:

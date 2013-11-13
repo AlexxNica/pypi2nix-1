@@ -54,20 +54,20 @@ def spec_cmp(spec1, spec2):
 
 class Spec(object):
     @classmethod
-    def from_pinned(cls, name, version, source=None):
+    def from_pinned(cls, name, version, source=None, extra=()):
         """Creates a spec line for a pinned representation directly, no
         parsing involved.  Takes an optional source.
         """
-        return cls(name, [('==', version)], source)
+        return cls(name, [('==', version)], source, extra)
 
     @classmethod
-    def from_line(cls, line, source=None):
+    def from_line(cls, line, source=None, extra=()):
         """Parses a spec line from a requirements file and returns a Spec."""
         from pkg_resources import Requirement
         req = Requirement.parse(line)
-        return cls(req.project_name, req.specs, source)
+        return cls(req.project_name, req.specs, source, extra + req.extras)
 
-    def __init__(self, name, preds, source=None):
+    def __init__(self, name, preds, source=None, extra=[]):
         """The Spec class represents a package version specification,
         typically given by a single line in a requirements.txt file.
 
@@ -78,17 +78,22 @@ class Spec(object):
         self._name = name
         self._preds = frozenset(preds if preds else [])
         self._source = source
+        self._extra = extra
 
     def add_source(self, source):
         """Creates a new, immutable, Spec which is a copy of the current Spec,
         but with the given source attached to it.
         """
-        return Spec(self.name, self.preds, source)
+        return Spec(self.name, self.preds, source, self.extra)
 
 
     @property  # noqa
     def name(self):
         return self._name
+
+    @property
+    def fullname(self):
+        return self.name + "-" + self.pinned
 
     @property
     def preds(self):
@@ -99,18 +104,33 @@ class Spec(object):
         return self._source
 
     @property
+    def extra(self):
+        return self._extra
+
+    @property
     def is_pinned(self):
         return any([qual == '==' for qual, _ in self._preds])
 
-    def description(self, with_source=True):  # noqa
+    @property
+    def pinned(self):
+        if not self.is_pinned:
+            raise ConflictError("%s not pinned" % self)
+
+        _, pred = first(self._preds)
+        return pred
+
+    def description(self, with_source=True, with_extra=True):  # noqa
         qualifiers = ','.join(map(''.join, sorted(self.preds, cmp=spec_cmp)))
         source = ''
+        extra = ''
         if with_source and self.source:
-            source = ' (from %s)' % (self.source,)
-        return '%s%s%s' % (self.name, qualifiers, source)
+            source = ' (from %s)' % (self.source)
+        if with_extra and self.extra:
+            extra = ' (extra %s)' % (", ".join(self.extra))
+        return '%s%s%s%s' % (self.name, qualifiers, source, extra)
 
     def __str__(self):
-        return self.description(with_source=False)
+        return self.description(with_source=False, with_extra=False)
 
     def __unicode__(self):
         return unicode(str(self))
@@ -120,13 +140,11 @@ class Spec(object):
 
     def __eq__(self, other):
         return (self.name == other.name and
-                self.preds == other.preds and
-                self.source == other.source)
+                self.preds == other.preds)
 
     def __hash__(self):
         return (hash(self.name) ^
-                hash(self.preds) ^
-                hash(self.source))
+                hash(self.preds))
 
 
 class SpecSet(object):
@@ -158,7 +176,7 @@ class SpecSet(object):
         a list of Specs with maximally one predicate.
         """
         specs = self._byname[name]
-        return [Spec(spec.name, [pred], spec.source)
+        return [Spec(spec.name, [pred], spec.source, spec.extra)
                 for spec in specs
                 for pred in spec.preds]
 
@@ -194,6 +212,8 @@ class SpecSet(object):
         for spec in exploded_spec_list:
             pred = first(spec.preds)  # it's the _only_ pred in the set, since it's exploded
             sources[pred].add(spec.source)
+            if pred[1] == "dev": # hack to fix stupid pytz
+                continue
             all_preds.add(pred)
 
         # First, group the flattened pred list by qualifier
@@ -375,7 +395,13 @@ class SpecSet(object):
             used_sources = [spec.source for spec in self._byname[name]
                             if spec.source is not None]
         source = ' and '.join(sorted(used_sources, key=lambda item: item.lower()))
-        return Spec(name, preds, source)
+
+        # Lookup which extra where used for this normalized spec set
+        extra = ()
+        for spec in self._byname[name]:
+            extra += spec.extra
+
+        return Spec(name, preds, source, extra=extra)
 
     def normalize(self):
         """Generates a new spec set that is more compact, but equivalent to
@@ -383,7 +409,16 @@ class SpecSet(object):
         """
         new_spec_set = SpecSet()
         for name in self._byname:
-            new_spec_set.add_spec(self.normalize_specs_for_name(name))
+            try:
+                new_spec_set.add_spec(self.normalize_specs_for_name(name))
+            except ConflictError:
+                for spec in self._byname[name]:
+                    if spec.is_pinned:
+                        new_spec_set.add_spec(spec)
+                        break
+
+                if not spec.is_pinned:
+                    raise
         return new_spec_set
 
     def __str__(self):
