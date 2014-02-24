@@ -3,3 +3,6 @@
 /.tox
 dist
 pip_tools.egg-info
+bin
+include
+lib

@@ -20,12 +20,14 @@ except ImportError:
 from functools import partial
 import urlparse
 
+from pip.exceptions import DistributionNotFound
 #from pip.backwardcompat import ConfigParser
 from pip.download import _download_url, _get_response_from_url
 from pip.index import Link, PackageFinder
 #from pip.locations import default_config_file
 from pip.req import InstallRequirement
 from pip.util import splitext
+from email.parser import FeedParser
 
 from .logging import logger
 from .datastructures import Spec, first
@@ -55,7 +57,7 @@ class BasePackageManager(object):
         """
         raise NotImplementedError('Implement this in a subclass.')
 
-    def get_dependencies(self, name, version):
+    def get_dependencies(self, name, version, extra=()):
         """Return a list of Spec instances, representing the dependencies of
         the specific package version indicated by the args.  This method only
         returns the direct (next-level) dependencies of the package.
@@ -136,7 +138,7 @@ class FakePackageManager(BasePackageManager):
             raise NoPackageMatch('No package found for %s' % (spec,))
         return self.pick_highest(versions)
 
-    def get_dependencies(self, name, version):
+    def get_dependencies(self, name, version, extra=()):
         pkg_key = '%s-%s' % (name, version)
         specs = []
         for specline in self._contents[pkg_key]:
@@ -197,16 +199,21 @@ class PersistentCache(object):
 class PackageManager(BasePackageManager):
     """The default package manager that goes to PyPI and caches locally."""
     dep_cache_file = os.path.join(os.path.expanduser('~'), '.pip-tools', 'dependencies.pickle')
+    pkg_info_cache_file = os.path.join(os.path.expanduser('~'), '.pip-tools', 'pkginfo.pickle')
     download_cache_root = os.path.join(os.path.expanduser('~'), '.pip-tools', 'cache')
 
-    def __init__(self):
+    def __init__(self, extra=("test", "tests")):
         # TODO: provide options for pip, such as index URL or use-mirrors
         if not os.path.exists(self.download_cache_root):
             os.makedirs(self.download_cache_root)
         self._link_cache = {}
         self._dep_cache = PersistentCache(self.dep_cache_file)
+        self._pkg_info_cache = PersistentCache(self.pkg_info_cache_file)
         self._dep_call_cache = {}
         self._best_match_call_cache = {}
+        self._pkg_info_call_cache = {}
+
+        self.extra = extra
 
     # BasePackageManager interface
     def find_best_match(self, spec):
@@ -230,30 +237,39 @@ class PackageManager(BasePackageManager):
         # case but it's still worth making a decision.
 
         def _find_cached_match(spec):
-            if spec.is_pinned:
-                # If this is a pinned spec, we can take a shortcut: if it is
-                # found in the dependency cache, we can safely assume it has
-                # been downloaded before, and thus must exist.  We can know
-                # this without every reaching out to PyPI and avoid the
-                # network overhead.
-                name, version = spec.name, first(spec.preds)[1]
-                if (name, version) in self._dep_cache:
-                    source = 'dependency cache'
-                    return version, source
+            #if spec.is_pinned:
+                ## If this is a pinned spec, we can take a shortcut: if it is
+                ## found in the dependency cache, we can safely assume it has
+                ## been downloaded before, and thus must exist.  We can know
+                ## this without every reaching out to PyPI and avoid the
+                ## network overhead.
+                #name, version = spec.name, first(spec.preds)[1]
+                #if (name, version) in self._dep_cache:
+                    #source = 'dependency cache'
+                    #return version, source
 
-            # Try the link cache, and otherwise, try PyPI
+            ## Try the link cache, and otherwise, try PyPI
             if specline in self._link_cache:
                 link = self._link_cache[specline]
                 source = 'link cache'
             else:
-                requirement = InstallRequirement.from_line(specline)
                 finder = PackageFinder(
                     find_links=[],
                     index_urls=['https://pypi.python.org/simple/'],
                     use_mirrors=True,
                     mirrors=[],
+                    allow_all_external=True,
+                    allow_all_insecure=True
                 )
-                link = finder.find_requirement(requirement, False)
+
+                try:
+                    requirement = InstallRequirement.from_line(specline)
+                    link = finder.find_requirement(requirement, False)
+                except DistributionNotFound:
+                    requirement = InstallRequirement.from_line(
+                        specline, prereleases=True)
+                    link = finder.find_requirement(requirement, False)
+
                 self._link_cache[specline] = link
                 source = 'PyPI'
             _, version = splitext(link.filename)[0].rsplit('-', 1)
@@ -275,25 +291,57 @@ class PackageManager(BasePackageManager):
         self._best_match_call_cache[specline] = True
         return version
 
-    def get_dependencies(self, name, version):
-        key = '{0}-{1}'.format(name, version)
+    def get_dependencies(self, name, version, extra=()):
+        key = '{0}-{1}-{2}'.format(name, version, sorted(extra))
         if key not in self._dep_call_cache:
             logger.debug('- Getting dependencies for %s-%s' % (name, version))
         with logger.indent():
-            deps = self._dep_cache.get((name, version))
+            deps = self._dep_cache.get((name, version, extra))
             if deps is not None:
                 source = 'dependency cache'
             else:
                 spec = Spec.from_pinned(name, version)
                 path = self.get_or_download_package(str(spec))
-                deps = self.extract_dependencies(path)
-                self._dep_cache[(name, version)] = deps
+                deps, _ = self.extract_egginfo(path, extra)
+                self._dep_cache[(name, version, extra)] = deps
                 source = 'package archive'
         if key not in self._dep_call_cache:
             logger.debug('  Found: %s (from %s)' % (deps, source))
         self._dep_call_cache[key] = True
-        return [Spec.from_line(dep) for dep in deps]
+        return [(Spec.from_line(dep), section) for dep, section in deps]
 
+    def get_pkg_info(self, name, version):
+        key = '{0}-{1}'.format(name, version)
+        if key not in self._pkg_info_call_cache:
+            logger.debug('- Getting pkginfo for %s-%s' % (name, version))
+        with logger.indent():
+            pkg_info = self._pkg_info_cache.get((name, version))
+            if pkg_info is not None:
+                source = 'pkg_info cache'
+            else:
+                spec = Spec.from_pinned(name, version)
+                path = self.get_or_download_package(str(spec))
+                _, pkg_info = self.extract_egginfo(path)
+                self._pkg_info_cache[(name, version)] = pkg_info
+                source = 'package archive'
+        if key not in self._pkg_info_call_cache:
+            logger.debug('  Found pkg_info (from %s)' % (source,))
+        self._pkg_info_call_cache[key] = True
+        return pkg_info
+
+    def get_hash(self, name, version):
+        logger.debug('- Getting hash for %s-%s' % (name, version))
+        spec = Spec.from_pinned(name, version)
+        link = self._link_cache[str(spec)]
+
+        return (link.hash_name, link.hash)
+
+    def get_url(self, name, version):
+        logger.debug('- Getting url for %s-%s' % (name, version))
+        spec = Spec.from_pinned(name, version)
+        link = self._link_cache[str(spec)]
+
+        return link.url
 
     # Helper methods
     def get_local_package_path(self, url):  # noqa
@@ -322,6 +370,22 @@ class PackageManager(BasePackageManager):
                 link.filename
             ))
             return self.download_package(link)
+
+    def read_pkg_info(self, package_dir):
+        name = os.listdir(package_dir)[0]
+        egg_info_dir = self.get_package_egg_info_path(package_dir)
+        pkg_info_path = os.path.join(
+            egg_info_dir or os.path.join(package_dir, name), "PKG-INFO")
+
+        if not os.path.exists(pkg_info_path):
+            raise Exception("PKG-INFO not found %s" % name)
+
+        with open(pkg_info_path, 'r') as pkg_info:
+            data = pkg_info.read()
+            p = FeedParser()
+            p.feed(data)
+
+        return p.close()
 
     # def get_pip_cache_root():
     #     """Returns pip's cache root, or None if no such cache root is
@@ -399,34 +463,55 @@ class PackageManager(BasePackageManager):
                 return False
             return True
 
-    def read_package_requires_file(self, package_dir):
-        """Returns a list of dependencies for an unpacked package dir."""
+    def get_package_egg_info_path(self, package_dir):
+        """Gets package egginfo path"""
         name = os.listdir(package_dir)[0]
         dist_dir = os.path.join(package_dir, name)
         name, version = name.rsplit('-', 1)
-        if not self.has_egg_info(dist_dir):
-            return []
 
-        egg_info_dir = '{0}.egg-info'.format(name.replace('-', '_'))
-        for dirpath, dirnames, _ in os.walk(dist_dir):
-            if egg_info_dir in dirnames:
-                requires = os.path.join(dirpath, egg_info_dir,
-                                        'requires.txt')
-                if os.path.exists(requires):
-                    break
+        def _get_egg_info_path():
+            egg_info_dir = '{0}.egg-info'.format(name.replace('-', '_'))
+            for dirpath, dirnames, _ in os.walk(dist_dir):
+                if egg_info_dir in dirnames:
+                    requires = os.path.join(dirpath, egg_info_dir,
+                                            'requires.txt')
+                    if os.path.exists(requires):
+                        return os.path.join(dirpath, egg_info_dir)
+
+        egg_info_path = _get_egg_info_path()
+        if egg_info_path:
+            return egg_info_path
+        else:
+            if not self.has_egg_info(dist_dir):
+                return ""
+
+            return _get_egg_info_path()
+
+    def read_package_requires_file(self, package_dir, extra=()):
+        """Returns a list of dependencies for an unpacked package dir."""
+        egg_info_dir = self.get_package_egg_info_path(package_dir)
+        if egg_info_dir:
+            requires = os.path.join(egg_info_dir, 'requires.txt')
         else:  # requires.txt not found
             return []
 
         deps = []
         with open(requires, 'r') as requirements:
+            skip_section = False
+            section = None
             for requirement in requirements.readlines():
                 dep = requirement.strip()
-                if dep == '[test]' or not dep:
-                    break
-                deps.append(dep)
+                if not dep:
+                    continue
+                elif dep[0] == "[":
+                    section = dep[1:-1]
+                    skip_section = not section in (extra + self.extra)
+                    continue
+                if not skip_section:
+                    deps.append((dep, section))
         return deps
 
-    def extract_dependencies(self, path):
+    def extract_egginfo(self, path, extra=()):
         """Returns a list of string representations of dependencies for
         a given distribution.
         """
@@ -436,11 +521,12 @@ class PackageManager(BasePackageManager):
             unpack_dir = os.path.join(build_dir, 'build')
             try:
                 self.unpack_archive(path, unpack_dir)
-                deps = self.read_package_requires_file(unpack_dir)
+                deps = self.read_package_requires_file(unpack_dir, extra)
+                pkg_info = self.read_pkg_info(unpack_dir)
             finally:
                 shutil.rmtree(build_dir)
         logger.debug('Found: %s' % (deps,))
-        return deps
+        return deps, pkg_info
 
 
 if __name__ == '__main__':

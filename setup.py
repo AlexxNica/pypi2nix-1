@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 
 def get_dependencies():
-    deps = []
+    deps = ["pip"]
     if sys.version_info < (2, 7):
         deps += ['argparse']
     return deps
@@ -21,7 +21,6 @@ setup(
     author_email='vincent@3rdcloud.com',
     description=__doc__,
     packages=find_packages(),
-    scripts=['bin/pip-compile', 'bin/pip-sync', 'bin/pip-review'],
     #include_package_data=True,
     zip_safe=False,
     platforms='any',
