@@ -1,7 +1,7 @@
 import sys
 
-from piptools.logging import logger
-from piptools.datastructures import SpecSet, Spec
+from .log import logger
+from .datastructures import SpecSet, Spec
 
 
 def print_specset(specset, round):

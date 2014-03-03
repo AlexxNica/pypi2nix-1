@@ -2,7 +2,7 @@
 *.t.err
 /.tox
 dist
-pip_tools.egg-info
+pypi2nix.egg-info
 bin
 include
 lib

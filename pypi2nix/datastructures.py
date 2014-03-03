@@ -75,7 +75,7 @@ class Spec(object):
         'preds', short for predicates, which are the famous (qualifier,
         version) tuples.
         """
-        self._name = name
+        self._name = name.lower()
         self._preds = frozenset(preds if preds else [])
         self._source = source
         self._extra = extra

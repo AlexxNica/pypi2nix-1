@@ -1,0 +1,55 @@
+{ pkgs, python, self, overrides }:
+  with pkgs.lib;
+
+let
+  fetchurl = pkgs.fetchurl;
+
+  callOverride = pkg: override:
+    if (isFunction override) then (override pkg) else override;
+
+  attrByPathAlternatives = alt: default: e:
+    if alt==[] then default else
+      attrByPath (head alt) (attrByPathAlternatives (drop 1 alt) default e) e;
+
+  overridablePythonPackage = pkg: self.buildPythonPackage (
+    pkg // (callOverride pkg (
+      attrByPathAlternatives ([[pkg.basename] [pkg.name]]) {} overrides)
+    )
+  );
+
+in {}
+############### Aliases #####################################################
+{% for env, pkgs in resolved_pkgs.iteritems() %}
+// (optionalAttrs (python.executable == "{{env}}") {
+  {% for name, pkg in pkgs.iteritems() %}
+  {{ name }} = self."{{ resolved_envs[env][pkg]["name"] }}-{{ resolved_envs[env][pkg]["version"] }}";
+  {% endfor %}
+})
+{% endfor %}
+
+############### Packages ####################################################
+// {}
+{% for env, pkgs in resolved_envs.iteritems() %}
+// (optionalAttrs (python.executable == "{{env}}") {
+  {% for name, pkg in pkgs.iteritems() %}
+  "{{ pkg["name"] }}-{{ pkg["version"] }}" = overridablePythonPackage {
+    name = "{{ pkg["name"] }}-{{ pkg["version"] }}";
+    basename = "{{ pkg["name"] }}";
+    version = "{{ pkg["version"] }}";
+
+    src = fetchurl {
+        url = "{{ pkg["src"]["url"].split("#")[0] }}";
+        {{ pkg["src"]["algo"] }} = "{{ pkg["src"]["sum"] }}";
+    };
+
+    buildInputs = [ {% for p in toset(
+        pkg["extra"].get("test", []) +
+        pkg["extra"].get("tests", []) +
+        pkg["extra"].get("testing", []) +
+        pkg["extra"].get("tests_require", [])
+    ) %}self."{{p}}" {% endfor %}];
+    propagatedBuildInputs = [ {% for p in toset(pkg["deps"]) %}self."{{p}}" {% endfor %}];
+  };
+  {% endfor %}
+})
+{% endfor %}

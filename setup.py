@@ -1,30 +1,34 @@
 """
-pip-tools keeps your pinned dependencies fresh.
+pypi2nix packages python nix packages for you
 """
 import sys
 from setuptools import setup, find_packages
 
 
 def get_dependencies():
-    deps = ["pip"]
+    deps = ["pip", "jinja2"]
     if sys.version_info < (2, 7):
         deps += ['argparse']
     return deps
 
 
 setup(
-    name='pip-tools',
+    name='pypi2nix',
     version='1.0',
-    url='https://github.com/nvie/pip-tools/',
+    url='https://github.com/offlinehacker/pypi2nix/',
     license='BSD',
-    author='Vincent Driessen',
-    author_email='vincent@3rdcloud.com',
+    author='Jaka Hudoklin',
+    author_email='jakahudoklin@gmail.com',
     description=__doc__,
     packages=find_packages(),
     #include_package_data=True,
     zip_safe=False,
     platforms='any',
     install_requires=get_dependencies(),
+    entry_points="""\
+    [console_scripts]
+    pypi2nix = pypi2nix.cmd:main
+    """,
     classifiers=[
         # As from https://pypi.python.org/pypi?%3Aaction=list_classifiers
         #'Development Status :: 1 - Planning',
@@ -51,5 +55,5 @@ setup(
         'License :: OSI Approved :: BSD License',
         'Operating System :: OS Independent',
         'Topic :: System :: Systems Administration',
-    ]
+    ],
 )

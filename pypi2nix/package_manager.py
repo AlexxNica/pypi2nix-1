@@ -1,6 +1,8 @@
+import json
 import operator
 import os
 import shutil
+import atexit
 import subprocess
 import sys
 import tarfile
@@ -29,7 +31,7 @@ from pip.req import InstallRequirement
 from pip.util import splitext
 from email.parser import FeedParser
 
-from .logging import logger
+from .log import logger
 from .datastructures import Spec, first
 from .version import NormalizedVersion  # PEP386 compatible version numbers
 
@@ -198,22 +200,30 @@ class PersistentCache(object):
 
 class PackageManager(BasePackageManager):
     """The default package manager that goes to PyPI and caches locally."""
-    dep_cache_file = os.path.join(os.path.expanduser('~'), '.pip-tools', 'dependencies.pickle')
-    pkg_info_cache_file = os.path.join(os.path.expanduser('~'), '.pip-tools', 'pkginfo.pickle')
+    dep_cache_file = lambda _, env: os.path.join(os.path.expanduser('~'), '.pip-tools', '%s-dependencies.pickle' %env)
+    pkg_info_cache_file = lambda _, env: os.path.join(os.path.expanduser('~'), '.pip-tools', '%s-pkginfo.pickle' %env)
     download_cache_root = os.path.join(os.path.expanduser('~'), '.pip-tools', 'cache')
 
-    def __init__(self, extra=("test", "tests")):
+    def __init__(
+        self, extra=(),
+        exe=sys.executable, env=sys.version_info.major+sys.version_info.minor,
+        python_path = ""
+    ):
         # TODO: provide options for pip, such as index URL or use-mirrors
         if not os.path.exists(self.download_cache_root):
             os.makedirs(self.download_cache_root)
         self._link_cache = {}
-        self._dep_cache = PersistentCache(self.dep_cache_file)
-        self._pkg_info_cache = PersistentCache(self.pkg_info_cache_file)
+        self._dep_cache = PersistentCache(self.dep_cache_file(env))
+        self._pkg_info_cache = PersistentCache(self.pkg_info_cache_file(env))
+        self._extract_cache = {}
         self._dep_call_cache = {}
         self._best_match_call_cache = {}
         self._pkg_info_call_cache = {}
 
         self.extra = extra
+        self.env = env
+        self.exe = exe
+        self.python_path = python_path
 
     # BasePackageManager interface
     def find_best_match(self, spec):
@@ -291,6 +301,22 @@ class PackageManager(BasePackageManager):
         self._best_match_call_cache[specline] = True
         return version
 
+    def extract(self, path):
+        if path in self._extract_cache:
+            return self._extract_cache[path]
+
+        logger.debug('- Extracting package %s' % (path,))
+
+        build_dir = tempfile.mkdtemp()
+        atexit.register(shutil.rmtree, build_dir)
+        unpack_dir = os.path.join(build_dir, 'build')
+        self.unpack_archive(path, unpack_dir)
+
+        # Cache unpack
+        self._extract_cache[path] = unpack_dir
+
+        return unpack_dir
+
     def get_dependencies(self, name, version, extra=()):
         key = '{0}-{1}-{2}'.format(name, version, sorted(extra))
         if key not in self._dep_call_cache:
@@ -302,7 +328,32 @@ class PackageManager(BasePackageManager):
             else:
                 spec = Spec.from_pinned(name, version)
                 path = self.get_or_download_package(str(spec))
-                deps, _ = self.extract_egginfo(path, extra)
+                package_dir = self.extract(path)
+                deps = self.extract_egginfo(package_dir, extra)
+
+                # distutils does not provide egg_info and tests_require is not
+                # written out
+                to_list = lambda x: x if isinstance(x, list) else [x]
+                setup_args = self.get_package_setup_arguments(package_dir) or {}
+                if not deps:
+                    deps += [
+                        (str(p), None) for p in
+                        to_list(setup_args.get("install_requires") or []) +
+                        to_list(setup_args.get("requires") or [])
+                        if p
+                    ]
+                # This should be written by egg_info, but it's not
+                deps += [
+                    (str(p), 'tests_require')
+                    for p in to_list(setup_args.get("tests_require") or []) if p
+                ]
+                # Hardcoded nose collector test suite fix
+                if (
+                    "nose.collector" in (setup_args.get("test_suite") or "")
+                    and name != "nose"
+                ):
+                    deps += [('nose', 'tests')]
+
                 self._dep_cache[(name, version, extra)] = deps
                 source = 'package archive'
         if key not in self._dep_call_cache:
@@ -321,7 +372,7 @@ class PackageManager(BasePackageManager):
             else:
                 spec = Spec.from_pinned(name, version)
                 path = self.get_or_download_package(str(spec))
-                _, pkg_info = self.extract_egginfo(path)
+                pkg_info = self.extract_pkginfo(self.extract(path))
                 self._pkg_info_cache[(name, version)] = pkg_info
                 source = 'package archive'
         if key not in self._pkg_info_call_cache:
@@ -371,21 +422,22 @@ class PackageManager(BasePackageManager):
             ))
             return self.download_package(link)
 
-    def read_pkg_info(self, package_dir):
-        name = os.listdir(package_dir)[0]
-        egg_info_dir = self.get_package_egg_info_path(package_dir)
-        pkg_info_path = os.path.join(
-            egg_info_dir or os.path.join(package_dir, name), "PKG-INFO")
+    def extract_pkginfo(self, package_dir):
+        with logger.indent():
+            name = os.listdir(package_dir)[0]
+            egg_info_dir = self.get_package_egg_info_path(package_dir)
+            pkg_info_path = os.path.join(
+                egg_info_dir or os.path.join(package_dir, name), "PKG-INFO")
 
-        if not os.path.exists(pkg_info_path):
-            raise Exception("PKG-INFO not found %s" % name)
+            if not os.path.exists(pkg_info_path):
+                raise Exception("PKG-INFO not found %s" % name)
 
-        with open(pkg_info_path, 'r') as pkg_info:
-            data = pkg_info.read()
-            p = FeedParser()
-            p.feed(data)
+            with open(pkg_info_path, 'r') as pkg_info:
+                data = pkg_info.read()
+                p = FeedParser()
+                p.feed(data)
 
-        return p.close()
+            return p.close()
 
     # def get_pip_cache_root():
     #     """Returns pip's cache root, or None if no such cache root is
@@ -453,9 +505,12 @@ class PackageManager(BasePackageManager):
         logger.debug('  (This can take a while.)')
         with logger.indent():
             try:
-                subprocess.check_call([sys.executable, 'setup.py', 'egg_info'],
-                                    cwd=dist_dir, stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE)
+                if self.python_path:
+                    os.environ["PYTHONPATH"] = self.python_path
+                subprocess.check_call(
+                    [self.exe, "setup.py", "egg_info"],
+                    cwd=dist_dir
+                )
             except subprocess.CalledProcessError:
                 logger.debug("  egg_info failed for {0}".format(
                     dist_dir.rsplit('/', 1)[-1]
@@ -487,6 +542,41 @@ class PackageManager(BasePackageManager):
 
             return _get_egg_info_path()
 
+    def get_package_setup_arguments(self, package_dir):
+        """Mocks setuptools and distutils to get setup arguments"""
+        name = os.listdir(package_dir)[0]
+        dist_dir = os.path.join(package_dir, name)
+
+        logger.debug('- Running setup.py in %s' % (dist_dir,))
+        logger.debug('  (This can take a while.)')
+        with logger.indent():
+            try:
+                if self.python_path:
+                    os.environ["PYTHONPATH"] = self.python_path
+                out = subprocess.check_output([
+                    self.exe, '-c',
+                    'import setuptools, distutils, json, sys;'
+                    'dump = lambda **args: sys.stdout.write("#**#"+json.dumps({'
+                    '"install_requires": args.get("install_requires"),'
+                    '"tests_require": args.get("tests_require"),'
+                    '"test_suite": args.get("test_suite"),'
+                    '"requires": args.get("requires")}) + "#**#");'
+                    'setuptools.setup=dump; distutils.core.setup=dump; import setup'
+                ],
+                cwd=dist_dir)
+                out = json.loads(out.partition('#**#')[-1].rpartition('#**#')[0])
+            except subprocess.CalledProcessError:
+                logger.debug("  setup extract failed for {0}".format(
+                    dist_dir.rsplit('/', 1)[-1]
+                ))
+                return None
+            except ValueError:
+                logger.debug("  setup extract failed for {0}".format(
+                    dist_dir.rsplit('/', 1)[-1]
+                ))
+                return None
+            return out
+
     def read_package_requires_file(self, package_dir, extra=()):
         """Returns a list of dependencies for an unpacked package dir."""
         egg_info_dir = self.get_package_egg_info_path(package_dir)
@@ -511,22 +601,15 @@ class PackageManager(BasePackageManager):
                     deps.append((dep, section))
         return deps
 
-    def extract_egginfo(self, path, extra=()):
+    def extract_egginfo(self, unpack_dir, extra=()):
         """Returns a list of string representations of dependencies for
         a given distribution.
         """
-        logger.debug('- Extracting dependencies for %s' % (path,))
         with logger.indent():
-            build_dir = tempfile.mkdtemp()
-            unpack_dir = os.path.join(build_dir, 'build')
-            try:
-                self.unpack_archive(path, unpack_dir)
-                deps = self.read_package_requires_file(unpack_dir, extra)
-                pkg_info = self.read_pkg_info(unpack_dir)
-            finally:
-                shutil.rmtree(build_dir)
+            deps = self.read_package_requires_file(unpack_dir, extra)
+
         logger.debug('Found: %s' % (deps,))
-        return deps, pkg_info
+        return deps
 
 
 if __name__ == '__main__':
