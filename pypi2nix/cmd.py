@@ -385,7 +385,7 @@ def main():
                 logger.warn("Incorrect format for specline %s", specline)
                 continue
         elif isinstance(specline, dict):
-            penvs = {"*": specline}
+            penvs = {e: specline for e in default_envs}
         else:
             logger.warn("Incorrect format for specline %s", specline)
             continue
