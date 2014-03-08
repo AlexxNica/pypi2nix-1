@@ -1,0 +1,5 @@
+graft pypi2nix
+graft tests
+recursive-include examples *.nix *.json
+recursive-include pypi2nix *.jinja2
+include *.md LICENSE

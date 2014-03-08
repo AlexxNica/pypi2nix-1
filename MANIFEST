@@ -1,2 +1,0 @@
-graft pypi2nix examples test
-include *.nix *.ini *.jinja2 LICENSE
