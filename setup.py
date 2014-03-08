@@ -25,6 +25,7 @@ setup(
     zip_safe=False,
     platforms='any',
     install_requires=get_dependencies(),
+    package_data={"pypi2nix": ["templates/*.jinja2"]},
     entry_points="""\
     [console_scripts]
     pypi2nix = pypi2nix.cmd:main
