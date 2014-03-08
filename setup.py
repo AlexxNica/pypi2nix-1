@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 
 def get_dependencies():
-    deps = ["pip", "jinja2"]
+    deps = ["pip==1.4.0", "jinja2", "requests"]
     if sys.version_info < (2, 7):
         deps += ['argparse']
     return deps

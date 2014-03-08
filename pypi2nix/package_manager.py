@@ -108,7 +108,6 @@ class FakePackageManager(BasePackageManager):
     def iter_versions(self, given_name):
         """Will return all versions available for the current package name."""
         for name, version in self.iter_package_versions():
-            if name == given_name:
                 yield version
 
     def matches_pred(self, version, pred):
@@ -181,6 +180,11 @@ class PersistentCache(object):
         with open(self._cache_file, 'w') as f:
             pickle.dump(self._cache, f)
 
+    def empty_cache(self):
+        self._cache = None
+        if os.path.exists(self._cache_file):
+            os.remove(self._cache_file)
+
     def __contains__(self, item):
         return item in self.cache
 
@@ -200,30 +204,33 @@ class PersistentCache(object):
 
 class PackageManager(BasePackageManager):
     """The default package manager that goes to PyPI and caches locally."""
-    dep_cache_file = lambda _, env: os.path.join(os.path.expanduser('~'), '.pip-tools', '%s-dependencies.pickle' %env)
-    pkg_info_cache_file = lambda _, env: os.path.join(os.path.expanduser('~'), '.pip-tools', '%s-pkginfo.pickle' %env)
-    download_cache_root = os.path.join(os.path.expanduser('~'), '.pip-tools', 'cache')
 
     def __init__(
         self, extra=(),
-        exe=sys.executable, env=sys.version_info.major+sys.version_info.minor,
-        python_path = ""
+        exe=sys.executable,
+        python_path = "",
+        download_cache_root = "",
+        link_cache = {},
+        dep_cache = {},
+        pkg_info_cache = {},
+        extract_cache = {},
+        dependency_hook = None
     ):
         # TODO: provide options for pip, such as index URL or use-mirrors
-        if not os.path.exists(self.download_cache_root):
-            os.makedirs(self.download_cache_root)
-        self._link_cache = {}
-        self._dep_cache = PersistentCache(self.dep_cache_file(env))
-        self._pkg_info_cache = PersistentCache(self.pkg_info_cache_file(env))
-        self._extract_cache = {}
-        self._dep_call_cache = {}
+        self.download_cache_root = download_cache_root
+        self._link_cache = link_cache
+        self._dep_cache = dep_cache
+        self._pkg_info_cache = pkg_info_cache
+        self._extract_cache = extract_cache
         self._best_match_call_cache = {}
+        self._dep_call_cache = {}
         self._pkg_info_call_cache = {}
 
         self.extra = extra
-        self.env = env
         self.exe = exe
         self.python_path = python_path
+
+        self.dependency_hook = dependency_hook
 
     # BasePackageManager interface
     def find_best_match(self, spec):
@@ -280,6 +287,7 @@ class PackageManager(BasePackageManager):
                         specline, prereleases=True)
                     link = finder.find_requirement(requirement, False)
 
+                link.comes_from = None # Hack to make pickle work
                 self._link_cache[specline] = link
                 source = 'PyPI'
             _, version = splitext(link.filename)[0].rsplit('-', 1)
@@ -318,6 +326,8 @@ class PackageManager(BasePackageManager):
         return unpack_dir
 
     def get_dependencies(self, name, version, extra=()):
+        spec = Spec.from_pinned(name, version)
+
         key = '{0}-{1}-{2}'.format(name, version, sorted(extra))
         if key not in self._dep_call_cache:
             logger.debug('- Getting dependencies for %s-%s' % (name, version))
@@ -326,7 +336,6 @@ class PackageManager(BasePackageManager):
             if deps is not None:
                 source = 'dependency cache'
             else:
-                spec = Spec.from_pinned(name, version)
                 path = self.get_or_download_package(str(spec))
                 package_dir = self.extract(path)
                 deps = self.extract_egginfo(package_dir, extra)
@@ -359,7 +368,9 @@ class PackageManager(BasePackageManager):
         if key not in self._dep_call_cache:
             logger.debug('  Found: %s (from %s)' % (deps, source))
         self._dep_call_cache[key] = True
-        return [(Spec.from_line(dep), section) for dep, section in deps]
+        deps = [(Spec.from_line(dep), section) for dep, section in deps]
+        return self.dependency_hook(spec, deps) \
+            if self.dependency_hook else deps
 
     def get_pkg_info(self, name, version):
         key = '{0}-{1}'.format(name, version)
@@ -372,7 +383,9 @@ class PackageManager(BasePackageManager):
             else:
                 spec = Spec.from_pinned(name, version)
                 path = self.get_or_download_package(str(spec))
-                pkg_info = self.extract_pkginfo(self.extract(path))
+                package_dir = self.extract(path)
+                pkg_info = self.extract_pkginfo(package_dir)
+                pkg_info["has_tests"] = self.has_tests(package_dir)
                 self._pkg_info_cache[(name, version)] = pkg_info
                 source = 'package archive'
         if key not in self._pkg_info_call_cache:
@@ -576,6 +589,25 @@ class PackageManager(BasePackageManager):
                 ))
                 return None
             return out
+
+    def has_tests(self, package_dir):
+        name = os.listdir(package_dir)[0]
+        dist_dir = os.path.join(package_dir, name)
+
+        with logger.indent():
+            try:
+                if self.python_path:
+                    os.environ["PYTHONPATH"] = self.python_path
+                out = subprocess.check_output(
+                    [self.exe, 'setup.py', '--help-commands'],
+                    cwd=dist_dir)
+            except subprocess.CalledProcessError:
+                logger.debug("  test info extract failed for {0}".format(
+                    dist_dir.rsplit('/', 1)[-1]
+                ))
+                return True
+
+        return True if "test" in out else False
 
     def read_package_requires_file(self, package_dir, extra=()):
         """Returns a list of dependencies for an unpacked package dir."""

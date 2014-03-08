@@ -91,6 +91,10 @@ class Spec(object):
     def name(self):
         return self._name
 
+    @name.setter
+    def name(self, name):
+        self._name = name
+
     @property
     def fullname(self):
         return self.name + "-" + self.pinned

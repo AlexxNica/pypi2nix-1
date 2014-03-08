@@ -1,0 +1,30 @@
+{
+  "pkgs": [
+    {"name": "pyramid", "envs": ["python2.7", "python3.3"]},
+    {
+      "name": "sentry",
+      "versions": ["sentry==6.4.4", "django==1.5.5"],
+      "envs": {
+        "python2.7": {"spec": "sentry[postgres,mysql]"},
+        "pypy": {"spec": "sentry[postgres_pypy]"}
+      }
+    }
+  ],
+  "overrides": {
+    "*": {
+      "sentry": {"deps": ["pysqlite"]},
+      "django-celery": {
+        "deps": ["pysqlite"],
+        "requirements": [
+          "https://raw.github.com/celery/django-celery/v{{ spec.pinned }}/requirements/default.txt",
+          ["https://raw.github.com/celery/django-celery/v{{ spec.pinned }}/requirements/test.txt", "test"]]
+      }
+    },
+    "python3.3": {
+      "unittest2": {"spec": "unittest2py3k"}
+    },
+    "pypy": {
+      "psycopg2": {"spec": "psycopg2cffi"}
+    }
+  }
+}

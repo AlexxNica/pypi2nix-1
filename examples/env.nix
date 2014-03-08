@@ -18,6 +18,14 @@ rec {
     ];
   };
 
+  pypy = pkgs.buildEnv {
+    name = "pypy";
+    paths = [
+      pkgs.pypy
+      pkgs.pypyPackages.setuptools
+    ];
+  };
+
   pypi2nix = pkgs.stdenv.mkDerivation rec {
     name = "pypi2nix";
     phases = ["installPhase"];
@@ -26,6 +34,7 @@ rec {
       ensureDir $out
       ln -s ${python27} $out/python27
       ln -s ${python33} $out/python33
+      ln -s ${pypy} $out/pypy
     '';
   };
 
