@@ -123,8 +123,7 @@ because you will need it. There's no simple way, just the hard way.
 Testing
 =======
 
-- You serious, this was a hackup of pip-tools, someday, someday,
-  after i rewrite this :)
+- TODO
 
 TODO
 ====
