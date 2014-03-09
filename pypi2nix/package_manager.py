@@ -513,14 +513,12 @@ class PackageManager(BasePackageManager):
             try:
                 if self.python_path:
                     os.environ["PYTHONPATH"] = self.python_path
-                subprocess.check_call(
+                subprocess.check_output(
                     [self.exe, "setup.py", "egg_info"],
-                    cwd=dist_dir
-                )
-            except subprocess.CalledProcessError:
-                logger.debug("  egg_info failed for {0}".format(
-                    dist_dir.rsplit('/', 1)[-1]
-                ))
+                    cwd=dist_dir)
+            except subprocess.CalledProcessError as e:
+                logger.warn(
+                    "!! egg_info failed for %s", dist_dir.rsplit('/', 1)[-1])
                 return False
             return True
 
@@ -568,19 +566,16 @@ class PackageManager(BasePackageManager):
                     '"test_suite": args.get("test_suite"),'
                     '"requires": args.get("requires")}) + "#**#");'
                     'setuptools.setup=dump; distutils.core.setup=dump; import setup'
-                ],
-                cwd=dist_dir)
-                out = json.loads(out.partition('#**#')[-1].rpartition('#**#')[0])
-            except subprocess.CalledProcessError:
-                logger.debug("  setup extract failed for {0}".format(
-                    dist_dir.rsplit('/', 1)[-1]
-                ))
+                ], cwd=dist_dir)
+                parsed = json.loads(out.partition('#**#')[-1].rpartition('#**#')[0])
+            except subprocess.CalledProcessError as e:
+                logger.warn("!! setup extract failed for %s", name)
                 return None
             except ValueError:
                 logger.warn("!! setup extract failed for %s, parse error", name)
                 logger.warn(out)
                 return None
-            return out
+            return parsed
 
     def has_tests(self, package_dir):
         name = os.listdir(package_dir)[0]
