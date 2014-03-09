@@ -393,19 +393,12 @@ class PackageManager(BasePackageManager):
         self._pkg_info_call_cache[key] = True
         return pkg_info
 
-    def get_hash(self, name, version):
-        logger.debug('- Getting hash for %s-%s' % (name, version))
-        spec = Spec.from_pinned(name, version)
-        link = self._link_cache[str(spec)]
-
-        return (link.hash_name, link.hash)
-
     def get_url(self, name, version):
         logger.debug('- Getting url for %s-%s' % (name, version))
         spec = Spec.from_pinned(name, version)
         link = self._link_cache[str(spec)]
 
-        return link.url
+        return (link.url, link.hash_name, link.hash)
 
     # Helper methods
     def get_local_package_path(self, url):  # noqa

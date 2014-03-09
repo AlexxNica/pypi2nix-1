@@ -181,19 +181,16 @@ class PyNixResolver(object):
             for spec in pinned:
                 package_manager.find_best_match(spec)
                 pkg_info = package_manager.get_pkg_info(spec.name, spec.pinned)
-                hash = package_manager.get_hash(spec.name, spec.pinned)
+                url, hash_name, hash = package_manager.get_url(
+                    spec.name, spec.pinned)
                 pkg = {
                     "name": spec.name,
                     "version": spec.pinned,
                     "src": {
-                        "url": package_manager.get_url(
-                            spec.name, spec.pinned),
-                        "algo": hash[0],
-                        "sum": hash[1]
+                        "url": url, "algo": hash_name, "sum": hash
                     },
                     "has_tests": pkg_info["has_tests"],
-                    "deps": [],
-                    "extra": {},
+                    "deps": [], "extra": {},
                     "meta": {
                         "homepage": pkg_info["Home-page"]
                     } if pkg_info else {}
