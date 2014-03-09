@@ -3,7 +3,7 @@
     {"name": "pyramid", "envs": ["python2.7", "python3.3"]},
     {
       "name": "sentry",
-      "versions": ["sentry==6.4.4", "django==1.5.5"],
+      "versions": ["django==1.5.5"],
       "envs": {
         "python2.7": {"spec": "sentry[postgres,mysql]"},
         "pypy": {"spec": "sentry[postgres_pypy]"}
@@ -12,7 +12,10 @@
   ],
   "overrides": {
     "*": {
-      "sentry": {"deps": ["pysqlite"]},
+      "sentry": {
+        "deps": ["pysqlite"],
+        "src": "https://github.com/getsentry/sentry/archive/{{ spec.pinned }}.tar.gz"
+      },
       "django-celery": {
         "deps": ["pysqlite"],
         "requirements": [

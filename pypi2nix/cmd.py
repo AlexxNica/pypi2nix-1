@@ -5,12 +5,13 @@ import argparse
 import json
 import requests
 
+from jinja2 import Environment, PackageLoader
+from pip.index import Link
+
 from .log import logger
 from .package_manager import PackageManager, PersistentCache
 from .datastructures import Spec, SpecSet, first
 from .resolver import Resolver
-
-from jinja2 import Environment, PackageLoader
 
 env = Environment(loader=PackageLoader('pypi2nix', 'templates'))
 pypi2nix_template = env.get_template('python-packages-generated.nix.jinja2')
@@ -65,8 +66,27 @@ class PyNixResolver(object):
                 link_cache=self.link_cache,
                 extract_cache=self.extract_cache,
 
-                dependency_hook=self._dependency_hook
+                dependency_hook=self._dependency_hook,
+                link_hook=self._link_hook
             )
+
+    def _link_hook(self, spec, link):
+        package_manager = self.package_manager[self.current_env]
+
+        dep_override = self._get_override(spec) or {}
+        if dep_override.get("src") and spec.is_pinned:
+            import pdb; pdb.set_trace()
+            logger.info(
+                '===> Source override %s found for package %s',
+                dep_override.get("src"), spec)
+            src = env.from_string(
+                dep_override.get("src")).render({"spec": spec})
+            link = Link(src + "#%s=%s" % package_manager.get_hash(Link(src)))
+
+        # Hack to make pickle work
+        link.comes_from = None
+
+        return link
 
     def _dependency_hook(self, spec, deps):
         _dependency_hook_call_cache = \
@@ -91,6 +111,8 @@ class PyNixResolver(object):
                 else:
                     new_deps.append((Spec.from_line(dep[0]), dep[1]))
 
+        # Requirement overrides, where you add requirements from different
+        # source files like requirements.txt of versions.cfg in builout
         if dep_override.get("requirements"):
             def render_url(url):
                 return env.from_string(url).render({"spec": spec})
@@ -99,12 +121,15 @@ class PyNixResolver(object):
                 '===> Requirements override %s found for package %s',
                 dep_override.get("requirements"), spec)
 
+            # Handle list of requirements or a single one
             if isinstance(dep_override.get("requirements"), basestring):
                 lines = [dep_override.get("requirements")]
             else:
                 lines = dep_override.get("requirements")
 
             for line in lines:
+                # By default we handle requirements.txt format
+                # You can also specify extra
                 if isinstance(line, basestring) or len(line) == 2:
                     url = line if isinstance(line, basestring) else line[0]
                     url = render_url(url)
@@ -181,13 +206,13 @@ class PyNixResolver(object):
             for spec in pinned:
                 package_manager.find_best_match(spec)
                 pkg_info = package_manager.get_pkg_info(spec.name, spec.pinned)
-                url, hash_name, hash = package_manager.get_url(
-                    spec.name, spec.pinned)
+                link = package_manager.get_link(spec.name, spec.pinned)
+                hash = package_manager.get_hash(link)
                 pkg = {
                     "name": spec.name,
                     "version": spec.pinned,
                     "src": {
-                        "url": url, "algo": hash_name, "sum": hash
+                        "url": link.url, "algo": hash[0], "sum": hash[1]
                     },
                     "has_tests": pkg_info["has_tests"],
                     "deps": [], "extra": {},

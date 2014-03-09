@@ -8,6 +8,7 @@ import sys
 import tarfile
 import tempfile
 import zipfile
+import hashlib
 
 try:
     from urllib.parse import quote
@@ -214,7 +215,8 @@ class PackageManager(BasePackageManager):
         dep_cache = {},
         pkg_info_cache = {},
         extract_cache = {},
-        dependency_hook = None
+        dependency_hook = None,
+        link_hook = None
     ):
         # TODO: provide options for pip, such as index URL or use-mirrors
         self.download_cache_root = download_cache_root
@@ -230,7 +232,8 @@ class PackageManager(BasePackageManager):
         self.exe = exe
         self.python_path = python_path
 
-        self.dependency_hook = dependency_hook
+        self._dependency_hook = dependency_hook or (lambda spec, deps: deps)
+        self._link_hook = link_hook or (lambda spec, link: link)
 
     # BasePackageManager interface
     def find_best_match(self, spec):
@@ -287,8 +290,7 @@ class PackageManager(BasePackageManager):
                         specline, prereleases=True)
                     link = finder.find_requirement(requirement, False)
 
-                link.comes_from = None # Hack to make pickle work
-                self._link_cache[specline] = link
+                self._link_cache[specline] = self._link_hook(spec, link)
                 source = 'PyPI'
             _, version = splitext(link.filename)[0].rsplit('-', 1)
 
@@ -296,7 +298,7 @@ class PackageManager(BasePackageManager):
             # spec into the link_cache, too
             pinned_spec = Spec.from_pinned(spec.name, version)
             if pinned_spec not in self._link_cache:
-                self._link_cache[str(pinned_spec)] = link
+                self._link_cache[str(pinned_spec)] = self._link_hook(spec, link)
             return version, source
 
         specline = str(spec)
@@ -336,7 +338,7 @@ class PackageManager(BasePackageManager):
             if deps is not None:
                 source = 'dependency cache'
             else:
-                path = self.get_or_download_package(str(spec))
+                path = self.get_or_download_package(spec)
                 package_dir = self.extract(path)
                 deps = self.extract_egginfo(package_dir, extra)
 
@@ -369,8 +371,7 @@ class PackageManager(BasePackageManager):
             logger.debug('  Found: %s (from %s)' % (deps, source))
         self._dep_call_cache[key] = True
         deps = [(Spec.from_line(dep), section) for dep, section in deps]
-        return self.dependency_hook(spec, deps) \
-            if self.dependency_hook else deps
+        return self._dependency_hook(spec, deps)
 
     def get_pkg_info(self, name, version):
         key = '{0}-{1}'.format(name, version)
@@ -382,7 +383,7 @@ class PackageManager(BasePackageManager):
                 source = 'pkg_info cache'
             else:
                 spec = Spec.from_pinned(name, version)
-                path = self.get_or_download_package(str(spec))
+                path = self.get_or_download_package(spec)
                 package_dir = self.extract(path)
                 pkg_info = self.extract_pkginfo(package_dir)
                 pkg_info["has_tests"] = self.has_tests(package_dir)
@@ -393,12 +394,31 @@ class PackageManager(BasePackageManager):
         self._pkg_info_call_cache[key] = True
         return pkg_info
 
-    def get_url(self, name, version):
-        logger.debug('- Getting url for %s-%s' % (name, version))
+    def get_link(self, name, version):
+        logger.debug('- Getting link for %s-%s' % (name, version))
         spec = Spec.from_pinned(name, version)
         link = self._link_cache[str(spec)]
 
-        return (link.url, link.hash_name, link.hash)
+        return self._link_hook(spec, link)
+
+    def get_hash(self, link):
+        if link.hash and link.hash_name:
+            return (link.hash_name, link.hash)
+
+        def md5hash(path):
+            return ("md5",  hashlib.md5(open(path, 'rb').read()).hexdigest())
+
+        url = url_without_fragment(link)
+        logger.info('- Hashing package on url %s' % (url,))
+
+        with logger.indent():
+            fullpath = self.get_local_package_path(url_without_fragment(link))
+
+            if os.path.exists(fullpath):
+                logger.info('  Archive cache hit: {0}'.format(link.filename))
+                return md5hash(fullpath)
+
+            return md5hash(self.download_package(link))
 
     # Helper methods
     def get_local_package_path(self, url):  # noqa
@@ -416,7 +436,7 @@ class PackageManager(BasePackageManager):
         """
         logger.debug('- Getting package location for %s' % (specline,))
         with logger.indent():
-            link = self._link_cache[str(specline)]
+            link = self._link_hook(specline, self._link_cache[str(specline)])
             fullpath = self.get_local_package_path(url_without_fragment(link))
 
             if os.path.exists(fullpath):
