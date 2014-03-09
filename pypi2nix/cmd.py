@@ -172,10 +172,7 @@ class PyNixResolver(object):
         package_manager.extra = extra
 
         target_spec = Spec.from_line(spec)
-        pinned = self._resolve(
-            target_spec, package_manager,
-            [(v if isinstance(v, basestring) else v[1]) for v in versions]
-        )
+        pinned = self._resolve(target_spec, package_manager, versions)
 
         logger.info('===> Generating output dict')
 
@@ -204,16 +201,6 @@ class PyNixResolver(object):
 
                 deps = package_manager.get_dependencies(
                     spec.name, spec.pinned, spec.extra)
-
-                # Add dependencies
-                matched = next((line for line in versions if (
-                    not isinstance(line, basestring)) and line[0] == spec.name
-                ), None)
-                if matched:
-                    deps += [
-                        (line, matched[2] if len(matched) > 2 else None)
-                        for line in pinned if matched[1] == line.name
-                    ]
 
                 for dep, section in deps:
                     pinned_dep = first(pinned._byname[dep.name])
