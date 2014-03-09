@@ -41,6 +41,7 @@ class PyNixResolver(object):
         self.link_cache = PersistentCache(
             os.path.join(self.cache_root, "link_cache.pickle"))
         self.extract_cache = {}
+        self._dependency_hook_call_cache = {}
 
         if update:
             self.link_cache.empty_cache()
@@ -68,6 +69,13 @@ class PyNixResolver(object):
             )
 
     def _dependency_hook(self, spec, deps):
+        _dependency_hook_call_cache = \
+            self._dependency_hook_call_cache[self.current_env] = \
+            self._dependency_hook_call_cache or {}
+
+        if spec in _dependency_hook_call_cache:
+            return _dependency_hook_call_cache[spec]
+
         new_deps = []
 
         # Dependency overrides for package
@@ -117,6 +125,7 @@ class PyNixResolver(object):
             else:
                 new_deps.append((dep, extra))
 
+        _dependency_hook_call_cache[spec] = new_deps
         return new_deps
 
     def _get_override(self, spec):
