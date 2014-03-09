@@ -73,7 +73,7 @@ class PyNixResolver(object):
         # Dependency overrides for package
         dep_override = self._get_override(spec) or {}
         if dep_override.get("deps"):
-            logger.debug(
+            logger.info(
                 '===> Dependency override %s found for package %s',
                 dep_override, spec)
 
@@ -87,8 +87,8 @@ class PyNixResolver(object):
             def render_url(url):
                 return env.from_string(url).render({"spec": spec})
 
-            logger.debug(
-                '===> Requirements %s found for package %s',
+            logger.info(
+                '===> Requirements override %s found for package %s',
                 dep_override.get("requirements"), spec)
 
             if isinstance(dep_override.get("requirements"), basestring):
@@ -108,7 +108,7 @@ class PyNixResolver(object):
         for dep, extra in deps:
             dep_override = self._get_override(dep) or {}
             if dep_override.get("spec"):
-                logger.debug(
+                logger.info(
                     '===> Dependency override %s found for dependency %s',
                     dep_override, dep)
 
@@ -129,7 +129,7 @@ class PyNixResolver(object):
         return pkg_override
 
     def _resolve(self, spec, package_manager, versions=[]):
-        logger.debug('===> Collecting requirements')
+        logger.info('===> Collecting requirements')
 
         spec_set = SpecSet()
         spec_set.add_spec(spec)
@@ -137,22 +137,22 @@ class PyNixResolver(object):
         for line in versions:
             spec_set.add_spec(Spec.from_line(line))
 
-        logger.debug('===> Normalizing requirements')
+        logger.info('===> Normalizing requirements')
         with logger.indent():
             spec_set = spec_set.normalize()
             for spec in spec_set:
-                logger.debug('- %s' % (spec,))
+                logger.info('- %s' % (spec,))
 
-        logger.debug('===> Resolving full tree')
+        logger.info('===> Resolving full tree')
 
         with logger.indent():
             resolver = Resolver(spec_set, package_manager=package_manager)
             pinned_spec_set = resolver.resolve()
 
-        logger.debug('===> Pinned spec set resolved')
+        logger.info('===> Pinned spec set resolved')
         with logger.indent():
             for spec in pinned_spec_set:
-                logger.debug('- %s' % (spec,))
+                logger.info('- %s' % (spec,))
 
         return pinned_spec_set
 
@@ -168,7 +168,7 @@ class PyNixResolver(object):
             [(v if isinstance(v, basestring) else v[1]) for v in versions]
         )
 
-        logger.debug('===> Generating output dict')
+        logger.info('===> Generating output dict')
 
         with logger.indent():
             result = {}
@@ -258,8 +258,6 @@ def _decode_dict(data):
 
 
 def main():
-    setup_logging(True)
-
     if hasattr(sys, "pypy_version_info"):
         vers = "pypy"
     else:
@@ -269,6 +267,10 @@ def main():
     parser.add_argument(
         "--update", action="store_true",
         help='''Ignores cache and updates all packages''',
+    )
+    parser.add_argument(
+        "--verbose", action="store_true",
+        help='''Be verbose'''
     )
     parser.add_argument(
         "--envs",
@@ -306,9 +308,12 @@ def main():
     )
     args = parser.parse_args()
 
+    # Setup logging
+    setup_logging(args.verbose)
+
     # Load input file
     try:
-        logger.debug("=> Parsing input json")
+        logger.info("=> Parsing input json")
         input_spec = json.loads(args.input.read(), object_hook=_decode_dict)
     except:
         raise Exception("Cannot parse input package speciffication")
@@ -341,12 +346,12 @@ def main():
 
     enabled_envs = envs.keys() \
         if not args.enabledenvs else args.enabledenvs.split(",")
-    logger.debug("=> Enabled envs: %s", enabled_envs)
+    logger.info("=> Enabled envs: %s", enabled_envs)
 
     default_envs = ["python2.7"]
 
-    logger.debug('')
-    logger.debug("=> Processing speciffications")
+    logger.info('')
+    logger.info("=> Processing speciffications")
     # For every specified package for each python environment resolve its
     # dependencies, then merge dependencies per env. Put pinned speciffied
 
@@ -391,8 +396,9 @@ def main():
             continue
 
         with logger.indent():
-            logger.debug("=> Unified speciffications for specline %s", specline)
-            logger.debug("%s", penvs)
+            logger.info('')
+            logger.info("=> Unified speciffications for specline %s", specline)
+            logger.info("%s", penvs)
 
         # Process package for each environment
         for env, info in {
@@ -410,8 +416,9 @@ def main():
                     "No name and/or spec provided by speciffication %s", info)
                 continue
 
-            logger.debug("~> %s for env \"%s\" in progress..." % (name, env))
-            logger.debug('~> ################################\n')
+            logger.info('')
+            logger.info("~> %s for env \"%s\" in progress..." % (name, env))
+            logger.info('~> ################################\n')
 
             resolved = resolved_envs[env] = resolved_envs.get(env) or {}
             resolved_pkgs[env] = resolved_pkgs.get(env) or {}
@@ -429,10 +436,10 @@ def main():
                     res_info["packages"] = [name]
                     resolved.update({res_name: res_info})
 
-    logger.debug('')
-    logger.debug("=> Rendering template")
+    logger.info('')
+    logger.info("=> Rendering template")
     result = pypi2nix_template.render(
         resolved_pkgs=resolved_pkgs, resolved_envs=resolved_envs)
 
-    logger.debug("=> Generating output file")
+    logger.info("=> Generating output file")
     args.output.write(result)

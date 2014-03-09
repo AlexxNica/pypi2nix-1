@@ -313,7 +313,7 @@ class PackageManager(BasePackageManager):
         if path in self._extract_cache:
             return self._extract_cache[path]
 
-        logger.debug('- Extracting package %s' % (path,))
+        logger.info('- Extracting package %s' % (path,))
 
         build_dir = tempfile.mkdtemp()
         atexit.register(shutil.rmtree, build_dir)
@@ -427,10 +427,10 @@ class PackageManager(BasePackageManager):
             fullpath = self.get_local_package_path(url_without_fragment(link))
 
             if os.path.exists(fullpath):
-                logger.debug('  Archive cache hit: {0}'.format(link.filename))
+                logger.info('  Archive cache hit: {0}'.format(link.filename))
                 return fullpath
 
-            logger.debug('  Archive cache miss, downloading {0}...'.format(
+            logger.info('  Archive cache miss, downloading {0}...'.format(
                 link.filename
             ))
             return self.download_package(link)
@@ -484,7 +484,7 @@ class PackageManager(BasePackageManager):
         #else:
         #    actually download the requirement
         url = url_without_fragment(link)
-        logger.debug('- Downloading package from %s' % (url,))
+        logger.info('- Downloading package from %s' % (url,))
         with logger.indent():
             fullpath = self.get_local_package_path(url)
             response = _get_response_from_url(url, link)
@@ -514,8 +514,8 @@ class PackageManager(BasePackageManager):
                 archive.close()
 
     def has_egg_info(self, dist_dir):
-        logger.debug('- Running egg_info in %s' % (dist_dir,))
-        logger.debug('  (This can take a while.)')
+        logger.info('- Running egg_info in %s' % (dist_dir,))
+        logger.info('  (This can take a while.)')
         with logger.indent():
             try:
                 if self.python_path:
@@ -560,8 +560,8 @@ class PackageManager(BasePackageManager):
         name = os.listdir(package_dir)[0]
         dist_dir = os.path.join(package_dir, name)
 
-        logger.debug('- Running setup.py in %s' % (dist_dir,))
-        logger.debug('  (This can take a while.)')
+        logger.info('- Running setup.py in %s' % (dist_dir,))
+        logger.info('  (This can take a while.)')
         with logger.indent():
             try:
                 if self.python_path:
@@ -584,9 +584,8 @@ class PackageManager(BasePackageManager):
                 ))
                 return None
             except ValueError:
-                logger.debug("  setup extract failed for {0}".format(
-                    dist_dir.rsplit('/', 1)[-1]
-                ))
+                logger.warn("!! setup extract failed for %s, parse error", name)
+                logger.warn(out)
                 return None
             return out
 
@@ -601,10 +600,8 @@ class PackageManager(BasePackageManager):
                 out = subprocess.check_output(
                     [self.exe, 'setup.py', '--help-commands'],
                     cwd=dist_dir)
-            except subprocess.CalledProcessError:
-                logger.debug("  test info extract failed for {0}".format(
-                    dist_dir.rsplit('/', 1)[-1]
-                ))
+            except subprocess.CalledProcessError as e:
+                logger.warn("!! test info extract failed for %s", name)
                 return True
 
         return True if "test" in out else False
@@ -640,7 +637,7 @@ class PackageManager(BasePackageManager):
         with logger.indent():
             deps = self.read_package_requires_file(unpack_dir, extra)
 
-        logger.debug('Found: %s' % (deps,))
+        logger.info('Found: %s' % (deps,))
         return deps
 
 

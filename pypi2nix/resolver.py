@@ -4,10 +4,11 @@ from .log import logger
 from .datastructures import SpecSet, Spec
 
 
-def print_specset(specset, round):
-    logger.debug('After round #%s:' % (round,))
+def print_specset(specset, round, debug=False):
+    (logger.debug if debug else logger.info)('After round #%s:' % (round,))
     for spec in sorted(specset, key=lambda s: s.description()):
-        logger.debug('  - %s' % (spec.description(),))
+        (logger.debug if debug else logger.info)(
+            '  - %s' % (spec.description(),))
 
 
 class Resolver(object):
@@ -43,9 +44,10 @@ class Resolver(object):
 
             if not self.resolve_one_round():
                 # Break as soon as nothing significant is added in this round
+                print_specset(self.spec_set, round)
                 break
 
-            print_specset(self.spec_set, round)
+            print_specset(self.spec_set, round, debug=True)
 
         # Return the pinned spec set
         return self.pin_spec_set()
