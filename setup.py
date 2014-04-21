@@ -1,15 +1,8 @@
 """
 pypi2nix packages python nix packages for you
 """
-import sys
+
 from setuptools import setup, find_packages
-
-
-def get_dependencies():
-    deps = ["pip==1.4.0", "jinja2", "requests"]
-    if sys.version_info < (2, 7):
-        deps += ['argparse']
-    return deps
 
 
 setup(
@@ -24,7 +17,8 @@ setup(
     #include_package_data=True,
     zip_safe=False,
     platforms='any',
-    install_requires=get_dependencies(),
+    install_requires=["setuptools", "pip==1.4.0", "jinja2", "requests"],
+    tests_require=["mock"],
     package_data={"pypi2nix": ["templates/*.jinja2"]},
     entry_points="""\
     [console_scripts]
@@ -57,4 +51,5 @@ setup(
         'Operating System :: OS Independent',
         'Topic :: System :: Systems Administration',
     ],
+    test_suite="tests"
 )

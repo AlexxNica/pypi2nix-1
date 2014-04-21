@@ -1,11 +1,11 @@
 {
   "pkgs": [
-    {"name": "pyramid", "envs": ["python2.7", "python3.3"]},
+    {"name": "pyramid", "envs": ["python27", "python33"]},
     {
       "name": "sentry",
       "versions": ["django==1.5.5"],
       "envs": {
-        "python2.7": {"spec": "sentry[postgres,mysql]"},
+        "python27": {"spec": "sentry[postgres,mysql]"},
         "pypy": {"spec": "sentry[postgres_pypy]"}
       }
     }
@@ -23,7 +23,7 @@
           ["https://raw.github.com/celery/django-celery/v{{ spec.pinned }}/requirements/test.txt", "test"]]
       }
     },
-    "python3.3": {
+    "python33": {
       "unittest2": {"spec": "unittest2py3k"}
     },
     "pypy": {

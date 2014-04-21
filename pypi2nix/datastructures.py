@@ -67,7 +67,7 @@ class Spec(object):
         req = Requirement.parse(line)
         return cls(req.project_name, req.specs, source, extra + req.extras)
 
-    def __init__(self, name, preds, source=None, extra=[]):
+    def __init__(self, name, preds, source=None, extra=()):
         """The Spec class represents a package version specification,
         typically given by a single line in a requirements.txt file.
 
@@ -78,14 +78,13 @@ class Spec(object):
         self._name = name.lower()
         self._preds = frozenset(preds if preds else [])
         self._source = source
-        self._extra = extra
+        self._extra = frozenset(extra if extra else [])
 
     def add_source(self, source):
         """Creates a new, immutable, Spec which is a copy of the current Spec,
         but with the given source attached to it.
         """
         return Spec(self.name, self.preds, source, self.extra)
-
 
     @property  # noqa
     def name(self):
@@ -144,19 +143,22 @@ class Spec(object):
 
     def __eq__(self, other):
         return (self.name == other.name and
-                self.preds == other.preds)
+                self.preds == other.preds and
+                frozenset(self.extra) == frozenset(other.extra))
 
     def __hash__(self):
         return (hash(self.name) ^
-                hash(self.preds))
+                hash(self.preds) ^
+                hash(frozenset(self.extra)))
 
 
 class SpecSet(object):
-    def __init__(self):
+    def __init__(self, specs=[]):
         """A collection of Spec instances that can be normalized and used for
         conflict detection.
         """
         self._byname = defaultdict(set)
+        self.add_specs(specs)
 
     def __iter__(self):
         """Iterate over all specs in the set."""
@@ -403,7 +405,7 @@ class SpecSet(object):
         # Lookup which extra where used for this normalized spec set
         extra = ()
         for spec in self._byname[name]:
-            extra += spec.extra
+            extra += tuple(spec.extra)
 
         return Spec(name, preds, source, extra=extra)
 
@@ -413,16 +415,7 @@ class SpecSet(object):
         """
         new_spec_set = SpecSet()
         for name in self._byname:
-            try:
-                new_spec_set.add_spec(self.normalize_specs_for_name(name))
-            except ConflictError:
-                for spec in self._byname[name]:
-                    if spec.is_pinned:
-                        new_spec_set.add_spec(spec)
-                        break
-
-                if not spec.is_pinned:
-                    raise
+            new_spec_set.add_spec(self.normalize_specs_for_name(name))
         return new_spec_set
 
     def __str__(self):

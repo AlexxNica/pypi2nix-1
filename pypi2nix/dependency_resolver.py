@@ -11,13 +11,17 @@ def print_specset(specset, round, debug=False):
             '  - %s' % (spec.description(),))
 
 
-class Resolver(object):
-    def __init__(self, spec_set, package_manager):
+class DependencyResolver(object):
+    def __init__(
+        self, spec_set, package_manager,
+        overrides={}, spec_hook=lambda overrides, spec: spec
+    ):
         """This class resolves a given SpecSet by querying the given
         PackageManager.
         """
         self.spec_set = spec_set
         self.pkgmgr = package_manager
+        self.spec_hook = spec_hook
 
     def resolve_one_round(self):
         """Resolves one level of the current spec set, by finding best matches
@@ -35,12 +39,22 @@ class Resolver(object):
         change significantly anymore.  Protects against infinite loops by
         breaking out after a max number rounds.
         """
+
+        def __spec_hook(spec):
+            if self.override.get(spec.name):
+                return self._spec_hook(self.overrides.get(spec.name))
+            else:
+                return spec
+
         round = 0
         while True:
             round += 1
             if round > max_rounds:
                 raise RuntimeError('Spec set was not resolved after %d rounds. '
                         'This is likely a bug.' % max_rounds)
+
+            # Apply spec hook on spec set
+            self.spec_set = SpecSet(map(__spec_hook, self.spec_set))
 
             if not self.resolve_one_round():
                 # Break as soon as nothing significant is added in this round
@@ -74,7 +88,7 @@ class Resolver(object):
         for spec in spec_set.normalize():
             version = pkgmgr.find_best_match(spec)
             pkg_deps = pkgmgr.get_dependencies(spec.name, version, spec.extra)
-            pkg_info = pkgmgr.get_pkg_info(spec.name, version)
+            pkg_versions = pkgmgr.get_versions(spec.name, version, spec.extra)
 
             # Append source information to the new specs
             if spec.source:
@@ -82,7 +96,8 @@ class Resolver(object):
             else:
                 source = '%s==%s' % (spec.name, version)
 
-            pkg_deps = {s.add_source(source) for s, _ in pkg_deps}
+            pkg_deps = {
+                s.add_source(source) for s, _ in pkg_deps.union(pkg_versions)}
             deps.update(pkg_deps)
 
         return deps

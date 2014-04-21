@@ -59,66 +59,97 @@ optional arguments:
 Input format
 ============
 
-This input format was designed to support both, compactness and expressability,
-because you will need it. There's no simple way, just the hard way.
+Pypi2nix format speciffication:
 
 ```
 {
-  # List of pacakges you want to generate
-  "pkgs": [
+ 
+  - alias name and package specification -
+  "simple-package",
+      |--> { name: "simple-package", spec: "simple-package", envs: [ "python2.7" ] }
 
-    # Simple package generated for default environments (python2.7)
-    "unittest2",
+  - or -
 
-    # Generate pyramid for python2.7 and python3.3
-    {
-      "name": "pyramid", # output package name also name of specification
-      "envs": ["python2.7", "python3.3"] # generate for python2.7 and python3.3
+  {
+    - alias name and package specification if spec not set -
+    "name": "complex-package",
+
+    - packages speciffication (optional, default takes name as spec) -
+    "spec": "complex-package==1.0",
+
+    - picks dependencies (optional) -
+    "versions": "complex-package-dep-A==1.0.0", <- requirements versions
+    - or -
+    "versions": "(file|http|https)_://<url>.txt", <- requirements file
+    - or -
+    "versions": "(file|http|https)_://<url>.cfg", <- buildout file
+    - or -
+    "versions": [
+      "complex-package-dep==1.0.0", <- requirements versions
+      "(file|http|https)_://<url>.txt", <- requirements file
+      "(file|http|https)_://<url>.cfg", <- buildout file
+    ],
+
+    - overrides this package (optional) -
+    "override": {
+      "src": "https://github.com/complex/package/archive/{{ spec.pinned }}.tar.gz", <- override src
+
+      "deps": [ "package-dep-B==2.0", ... ], <- redefine dependencies
+      - or (by default takes deps) -
+      "deps_append": [  "package-dep-B==2.0", ... ], <- append dependencies
     },
-    
-    # Generate sentry for python2.7 and pypy
-    {
-      "name": "sentry", # output package name
-      "versions": ["sentry==6.4.4", "django==1.5.5"], # List of picked versions
-      "envs": { # List of environments
-        "python2.7": {"spec": "sentry[postgres,mysql]"}, # For python2.7 use extra postgres and mysql
-        "pypy": {"spec": "sentry[postgres_pypy]"} # For pypy use extra postgres_pypy
+
+    - overrides this package or dependant packages (optional) -
+    "overrides": {
+      "complex-package-dep-A": <override>
+    },
+
+    - defines interpreters to use and per environment options (optional) -
+    "envs": [ "python2.7", "pypy" ],
+    - or -
+    "envs": {
+      "python2.7": "complex-package-A",
+      - or -
+      "pypy": {
+        "spec": "complex-package[pypy]", <- define extra
+        "versions": <versions>,
+        "override": <override>,
+        "overrides": <overrides>
       }
-    }
-  ],
-
-  # List of global overrides for packages per environments
-  "overrides": {
-
-    # For all environments
-    "*": {
-      #Override sentry
-      "sentry": {"deps": ["pysqlite"]}, # Add pysqlite as dependency to sentry
-
-      # Override django-celery
-      "django-celery": { # Add pysqlite as dependency to django-celery
-        "deps": ["pysqlite"], 
-        "requirements": [ # Pick requirements for package from different sources
-          "https://raw.github.com/celery/django-celery/v{{ spec.pinned }}/requirements/default.txt", # Just a simple requirements file
-          ["https://raw.github.com/celery/django-celery/v{{ spec.pinned }}/requirements/test.txt", "test"]] # Requirements file for test extra
-      }
+      ...
     },
-
-    # For python3.3 environment
-    "python3.3": {
-      # Change specified dependency from unittest2 to unittest2py3k
-      "unittest2": {"spec": "unittest2py3k"}
-    },
-
-    # For pypy environemnt
-    "pypy": {
-      # Change speciffied dependancy from psycopg2 to psycopg2cffi
-      "psycopg2": {"spec": "psycopg2cffi"}
-    }
   }
-}
+ 
+]
 ```
 
+This input format was designed to support both, compactness and expressability,
+because you will need it.
+
+Internal format:
+
+```
+{
+    "python2.7": [
+        {
+            "name": "simple-package",
+            "spec": "simple-package"
+        },
+        {
+            "name": "complex-package",
+            "spec": "complex-package",
+            "versions": "complex-package-dep-A==1.0.0"
+        }
+    ],
+    "pypy": [
+        {
+            "name": "complex-package",[ "Plone-5.0", "zope.interface-4.4", ... ]
+            "spec": "complex-package[pypy]",
+            "versions": "complex-package-dep-A==1.0.0"
+        }
+    ]
+}
+```
 
 Testing
 =======
