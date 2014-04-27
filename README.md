@@ -29,31 +29,38 @@ Usage
 =====
 
 ```
-usage: pypi2nix [-h] [--update] [--envs ENVS] [--enabledenvs ENABLEDENVS]
+usage: pypi2nix [-h] [--update] [--verbose] [--envs ENVS]
+                [--enabled-envs ENABLED_ENVS] [--extra EXTRA] [--name NAME]
                 [--cache-root CACHE_ROOT]
                 [--download-cache-root DOWNLOAD_CACHE_ROOT]
+                [--overrides OVERRIDES]
                 input output
 
 pypi2nix, dont write them by hand :)
 
 positional arguments:
-  input                 Input json file (default stdin)
+  input                 Input json or setup.py file
   output                Output nix file (default stdout)
 
 optional arguments:
   -h, --help            show this help message and exit
   --update              Ignores cache and updates all packages
+  --verbose             Be verbose
   --envs ENVS           Comma separated list of environments in format:
                         name|path|python_path (default: PYTHON_ENVS or current
                         python)
-  --enabledenvs ENABLEDENVS
+  --enabled-envs ENABLED_ENVS
                         Comma separated names of list of enabled environments
                         (default: ENABLED_ENVS or all avalible environments)
+  --extra EXTRA         Comma separated list of additional extra
+  --name NAME           Comma separated list of additional extra
   --cache-root CACHE_ROOT
                         Root of the cache (default: ~/.pip-tools)
   --download-cache-root DOWNLOAD_CACHE_ROOT
                         Root of the download cache (default: ~/.pip-
                         tools/cache)
+  --overrides OVERRIDES
+                        Package overrides (default:
 ```
 
 Input format
@@ -62,7 +69,7 @@ Input format
 Pypi2nix format speciffication:
 
 ```
-{
+[
  
   - alias name and package specification -
   "simple-package",
@@ -82,11 +89,14 @@ Pypi2nix format speciffication:
     - or -
     "versions": "(file|http|https)_://<url>.txt", <- requirements file
     - or -
+    "versions": ["(file|http|https)_://<url>.txt", extra] <- requirements file + extra
+    - or -
     "versions": "(file|http|https)_://<url>.cfg", <- buildout file
     - or -
     "versions": [
       "complex-package-dep==1.0.0", <- requirements versions
       "(file|http|https)_://<url>.txt", <- requirements file
+      ["(file|http|https)_://<url>.txt", "extra"], <- requirements file + extra
       "(file|http|https)_://<url>.cfg", <- buildout file
     ],
 
@@ -96,12 +106,18 @@ Pypi2nix format speciffication:
 
       "deps": [ "package-dep-B==2.0", ... ], <- redefine dependencies
       - or (by default takes deps) -
-      "deps_append": [  "package-dep-B==2.0", ... ], <- append dependencies
+      "append_deps": [  "package-dep-B==2.0", ... ], <- append dependencies
+
+      "override_deps": { <- override dependencies
+        "package-dep-C": "package-dep-B[extra]"
+      }
     },
 
     - overrides this package or dependant packages (optional) -
     "overrides": {
-      "complex-package-dep-A": <override>
+      "complex-package-dep-A": <override> ++ {
+        "spec": "<spec>" <- replace this dependency
+      }
     },
 
     - defines interpreters to use and per environment options (optional) -
