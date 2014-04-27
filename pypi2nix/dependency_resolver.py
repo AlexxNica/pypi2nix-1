@@ -12,16 +12,12 @@ def print_specset(specset, round, debug=False):
 
 
 class DependencyResolver(object):
-    def __init__(
-        self, spec_set, package_manager,
-        overrides={}, spec_hook=lambda overrides, spec: spec
-    ):
+    def __init__(self, spec_set, package_manager):
         """This class resolves a given SpecSet by querying the given
         PackageManager.
         """
         self.spec_set = spec_set
         self.pkgmgr = package_manager
-        self.spec_hook = spec_hook
 
     def resolve_one_round(self):
         """Resolves one level of the current spec set, by finding best matches
@@ -30,6 +26,7 @@ class DependencyResolver(object):
 
         Returns whether the spec set was changed significantly by this round.
         """
+
         new_deps = self.find_new_dependencies()
         self.spec_set.add_specs(new_deps)
         return len(new_deps) > 0
@@ -40,21 +37,12 @@ class DependencyResolver(object):
         breaking out after a max number rounds.
         """
 
-        def __spec_hook(spec):
-            if self.override.get(spec.name):
-                return self._spec_hook(self.overrides.get(spec.name))
-            else:
-                return spec
-
         round = 0
         while True:
             round += 1
             if round > max_rounds:
                 raise RuntimeError('Spec set was not resolved after %d rounds. '
                         'This is likely a bug.' % max_rounds)
-
-            # Apply spec hook on spec set
-            self.spec_set = SpecSet(map(__spec_hook, self.spec_set))
 
             if not self.resolve_one_round():
                 # Break as soon as nothing significant is added in this round
@@ -96,9 +84,8 @@ class DependencyResolver(object):
             else:
                 source = '%s==%s' % (spec.name, version)
 
-            pkg_deps = {
-                s.add_source(source) for s, _ in pkg_deps.union(pkg_versions)}
-            deps.update(pkg_deps)
+            for d in pkg_deps.union(pkg_versions):
+                deps.update([d.add_source(source)])
 
         return deps
 

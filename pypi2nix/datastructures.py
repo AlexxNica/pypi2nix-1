@@ -76,9 +76,9 @@ class Spec(object):
         version) tuples.
         """
         self._name = name.lower()
-        self._preds = frozenset(preds if preds else [])
+        self._preds = preds if preds else tuple()
         self._source = source
-        self._extra = frozenset(extra if extra else [])
+        self._extra = extra if extra else tuple()
 
     def add_source(self, source):
         """Creates a new, immutable, Spec which is a copy of the current Spec,
@@ -143,13 +143,11 @@ class Spec(object):
 
     def __eq__(self, other):
         return (self.name == other.name and
-                self.preds == other.preds and
-                frozenset(self.extra) == frozenset(other.extra))
+                self.preds == other.preds)
 
     def __hash__(self):
         return (hash(self.name) ^
-                hash(self.preds) ^
-                hash(frozenset(self.extra)))
+                hash(frozenset(self.preds)))
 
 
 class SpecSet(object):

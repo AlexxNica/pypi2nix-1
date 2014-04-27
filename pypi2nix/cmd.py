@@ -3,12 +3,13 @@ import sys
 import logging
 import argparse
 import json
-import requests
+import collections
 
 from jinja2 import Environment, PackageLoader
 
 from .log import logger
 from .package_resolver import PackageResolver
+from .package_manager import Package
 from .caching import PersistentCache, hashabledict
 from .datastructures import Spec, SpecSet, first
 
@@ -37,9 +38,9 @@ def _decode_list(data):
         if isinstance(item, unicode):
             item = item.encode('utf-8')
         elif isinstance(item, list):
-            item = _decode_list(item)
+            item = tuple(_decode_list(item))
         elif isinstance(item, dict):
-            item = _decode_dict(item)
+            item = hashabledict(_decode_dict(item))
         rv.append(item)
     return rv
 
@@ -52,9 +53,9 @@ def _decode_dict(data):
         if isinstance(value, unicode):
             value = value.encode('utf-8')
         elif isinstance(value, list):
-            value = _decode_list(value)
+            value = tuple(_decode_list(value))
         elif isinstance(value, dict):
-            value = _decode_dict(value)
+            value = hashabledict(_decode_dict(value))
         rv[key] = value
     return rv
 
@@ -87,7 +88,7 @@ def parse_specline(specline, default_envs):
         parsed.update({
             "name": name, "spec": spec,
             "overrides": {
-                k: hashabledict(v) for k, v in
+                k: v for k, v in
                 (overrides or parent.get("overrides", {})).iteritems()
             },
             "versions": versions or parent.get("versions", [])
@@ -156,7 +157,7 @@ def main():
         )
     )
     parser.add_argument(
-        "--enabledenvs",
+        "--enabled-envs",
         help='''Comma separated names of list of enabled environments
                 (default: ENABLED_ENVS or all avalible environments)''',
         default=os.environ.get("ENABLED_ENVS")
@@ -181,6 +182,11 @@ def main():
         help='''Root of the download cache (default: ~/.pip-tools/cache)''',
         default=os.path.join(os.path.expanduser('~'), '.pip-tools', 'cache')
     )
+    parser.add_argument(
+        "--overrides",
+        help='''Package overrides (default: ''',
+        default=""
+    )
     parser.add_argument("input", help="Input json or setup.py file")
     parser.add_argument(
         "output", help="Output nix file (default stdout)",
@@ -191,6 +197,13 @@ def main():
     # Setup logging
     setup_logging(args.verbose)
 
+    # Create basic cache dict
+    cache = collections.defaultdict(dict)
+    cache["link_cache"] = PersistentCache(
+        os.path.join(args.cache_root, "link_cache.pickle"))
+    cache["pkg_info_cache"] = PersistentCache(
+        os.path.join(args.cache_root, "pkginfo.pickle"))
+
     # Parse environments from provided comma separated string
     envs = {}
     for env in args.envs.split(","):
@@ -200,19 +213,46 @@ def main():
             continue
 
         logger.info("=> Environment: %s %s %s", name, path, python_path)
-        envs[name] = {"exe": path, "python_path": python_path}
 
+        # Create environment cache
+        env_cache = cache.copy()
+        env_cache["dep_cache"] = PersistentCache(
+            os.path.join(args.cache_root, "%s-deps.pickle" % name))
+        env_cache["version_cache"] = PersistentCache(
+            os.path.join(args.cache_root, "%s-versions.pickle" % name))
+
+        # Create reslvers for each enviroment
+        envs[name] = PackageResolver(
+            download_cache_root=args.download_cache_root, cache=env_cache,
+            exe=path, python_path=python_path
+        )
+
+    # Parse enabled environemnts
     enabled_envs = envs.keys() \
-        if not args.enabledenvs else args.enabledenvs.split(",")
+        if not args.enabled_envs else args.enabled_envs.split(",")
     logger.info("=> Enabled envs: %s", enabled_envs)
 
     default_envs = ["python27"]
 
+    # Load overrides
+    logger.info('')
+    logger.info("=> Loading overrides")
+
+    overrides = {}
+    overrides_path = args.overrides or os.path.join(path, ".pypi2nix.json")
+    if os.path.exists(overrides_path):
+        logger.info("- Overrides found %s", overrides_path)
+        overrides = json.loads(
+            open(overrides_path).read(), object_hook=_decode_dict)
+        assert isinstance(overrides, dict), "Package overrides are not dict"
+
+    # Process speciffications
     logger.info('')
     logger.info("=> Processing speciffications")
 
     resolved_pkgs = {}
     resolved_alias = {}
+
     path = os.path.abspath(args.input)
     if os.path.isdir(path):
         logger.info("- Using package on path %s", path)
@@ -221,34 +261,28 @@ def main():
             name=args.name, dist_dir=path,
             exe=sys.executable, python_path=":".join(sys.path))
 
-        overrides = {}
-        overrides_path = os.path.join(path, ".pypi2nix.json")
-        if os.path.exists(overrides_path):
-            logger.info("- Overrides found %s", overrides_path)
-            overrides = json.loads(
-                open(overrides_path).read(), object_hook=_decode_dict)
-
         input_specs = []
         for dep, extra in package.get_deps(extra=args.extra.split(",")):
             input_specs += [str(dep)]
 
-        resolver = PyNixResolver(
-            envs,
-            args.cache_root, args.download_cache_root,
-            overrides=overrides, update=args.update,
-            dependency_links=package.get_dependency_links()
-        )
-
-        for env in enabled_envs:
+        for env, resolver in enabled_envs.iteritems():
             logger.info('')
             logger.info("~> %s for env \"%s\" in progress..." % (input_specs, env))
             logger.info('~> ################################\n')
+
+            local_overrides = {}
+            local_overrides.update(overrides.get("*", {}))
+            local_overrides.update(overrides.get(env, {}))
 
             resolved_pkgs[env] = resolved_pkgs.get(env) or {}
             resolved_alias[env] = resolved_alias.get(env) or {}
 
             resolved_pkgs[env], resolved_alias[env] = \
-                resolver.resolve(env, specs=input_specs)
+                resolver.resolve(
+                    env, specs=input_specs,
+                    overrides=local_overrides,
+                    dependency_links=package.get_dependency_links()
+                )
     else:
         # Load input file
         try:
@@ -258,23 +292,12 @@ def main():
             raise Exception("Cannot parse input package speciffication")
 
         # Sanity check input json
-        assert isinstance(input_spec, dict), \
+        assert isinstance(input_spec, list), \
             "Input speciffication is not a dict"
-        assert isinstance(input_spec.get("pkgs") or [], list), \
-            "Package speciffication is not a list"
-        assert isinstance(input_spec.get("overrides") or {}, dict), \
-            "Overrides speciffication is not a dict"
-
-        resolver = PyNixResolver(
-            envs,
-            args.cache_root, args.download_cache_root,
-            overrides=input_spec.get("overrides") or {},
-            update=args.update
-        )
 
         # For every specified package for each python environment resolve its
         # dependencies, then merge dependencies per env.
-        for specline in input_spec.get("pkgs") or []:
+        for specline in input_spec or []:
 
             penvs = parse_specline(specline, default_envs)
             with logger.indent():
@@ -284,7 +307,8 @@ def main():
 
             # Process package for each environment
             for env, info in {
-                env: penvs[env] for env in envs if env in enabled_envs
+                env: penvs.get(env)
+                for env in envs if env in enabled_envs and env in penvs
             }.iteritems():
                 spec = Spec.from_line(info.get("spec"))
                 name = info.get("name")
@@ -295,10 +319,15 @@ def main():
 
                 resolved = resolved_pkgs[env] = resolved_pkgs.get(env) or {}
                 resolved_alias[env] = resolved_alias.get(env) or {}
-                pkgs, alias = resolver.resolve(
-                    env, specs=[str(spec)],
-                    versions=info.get("versions"),
-                    overrides=info.get("overrides")
+
+                local_overrides = {}
+                local_overrides.update(overrides.get("*", {}))
+                local_overrides.update(overrides.get(env, {}))
+                local_overrides.update(info.get("overrides"))
+
+                pkgs, alias = envs[env].resolve(
+                    specs=[str(spec)],
+                    versions=info.get("versions"), overrides=local_overrides
                 )
                 resolved_alias[env].update(alias)
                 for res_name, res_info in pkgs.iteritems():

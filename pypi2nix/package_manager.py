@@ -56,6 +56,8 @@ class Package(object):
         self.dist_dir = dist_dir or os.path.join(package_dir, fullname)
         self.name, self.version = self._get_name_version(fullname)
 
+        self.name = self.name.lower()
+
     def get_deps(self, extra=()):
         """
         Get package dependencies from egg info or from by intercepting setup
@@ -94,10 +96,10 @@ class Package(object):
             deps += [('nose', '_test_suite')]
 
         # Convert to specs before returning
-        return [
+        return set([
             (Spec.from_line(dep, extra=(extra,)) if extra else
              Spec.from_line(dep)) for dep, extra in deps
-        ]
+        ])
 
     def get_pkginfo(self):
         """Gets package info by reading PKG-INFO file"""
@@ -122,6 +124,7 @@ class Package(object):
         """
 
         egg_info_dir = self._get_package_egg_info_path()
+
         dependency_links_path = os.path.join(
             egg_info_dir, "dependency_links.txt")
 
@@ -227,6 +230,9 @@ class Package(object):
         return _get_egg_info_path()
 
     def _has_egg_info(self):
+        if hasattr(self, "_egg_info_call_cache"):
+            return
+
         logger.debug('- Running egg_info in %s' % (self.dist_dir,))
         try:
             if self.python_path:
@@ -238,6 +244,9 @@ class Package(object):
             logger.warn(
                 "!! egg_info failed for %s", self.dist_dir.rsplit('/', 1)[-1])
             return False
+
+        self._egg_info_call_cache = True
+
         return True
 
     def _get_package_setup_arguments(self):
@@ -280,9 +289,10 @@ class PackageManager(object):
         self, overrides={}, extra=(), dependency_links=[],
         exe=sys.executable, python_path="",
         download_cache_root="", cache=None,
-        link_hook=lambda overrides, spec, link: link,
+        link_hook=lambda overrides, spec, link: (link, None),
         dependency_hook=lambda overrides, spec, deps, package: deps,
-        version_hook=lambda overrides, spec, package: []
+        version_hook=lambda overrides, spec, package: [],
+        spec_hook=lambda overrides, spec: spec
     ):
         self.extra = extra
         self.exe, self.python_path = exe, python_path
@@ -291,6 +301,7 @@ class PackageManager(object):
         self._dependency_hook = dependency_hook
         self._link_hook = link_hook
         self._version_hook = version_hook
+        self._spec_hook = spec_hook
 
         self.finder = PackageFinder(
             find_links=[],
@@ -315,25 +326,6 @@ class PackageManager(object):
         self._pkg_info_call_cache = {}
 
     def find_best_match(self, spec):
-        # TODO: if the spec is pinned, we might be able to go straight to the
-        # local cache without having to use the PackageFinder. Cached file
-        # names look like this:
-        # https%3A%2F%2Fpypi.python.org%2Fpackages%2Fsource%2Fs%2Fsix%2Fsix-1.2.0.tar.gz
-        # This is easy to guess from a package==version spec but requires the
-        # package to be actually hosted on pypi, which is not the case for
-        # everything (e.g. redis).
-        #
-        # Option 1: make this work for packages hosted on PyPI and accept
-        # external packages to be slower.
-        #
-        # Option 2: only use the last part of the URL as a file name
-        # (six-1.2.0.tar.gz). This makes it easy to check the local cache for
-        # any pinned spec but *might* lead to inconsistencies for people
-        # maintaining their own PyPI servers and adding their modified
-        # packages as the same names/versions as the originals on the
-        # canonical PyPI. The shouldn't do it, and this is probably an edge
-        # case but it's still worth making a decision.
-
         def _find_cached_match(spec):
             #if spec.is_pinned:
                 ## If this is a pinned spec, we can take a shortcut: if it is
@@ -345,11 +337,12 @@ class PackageManager(object):
                 #if (name, version) in self._dep_cache:
                     #source = 'dependency cache'
                     #return version, source
+            version = None
             overrides = self.overrides.get(spec.name)
 
             ## Try the link cache, and otherwise, try PyPI
             if (spec, overrides) in self._link_cache:
-                link = self._link_cache[(spec, overrides)]
+                link, version = self._link_cache[(spec, overrides)]
                 source = 'link cache'
             else:
                 try:
@@ -365,24 +358,29 @@ class PackageManager(object):
                         '===> Link override %s found for package %s',
                         overrides, spec)
 
-                    link = self._link_hook(overrides, spec, link)
+                    link, version = self._link_hook(overrides, spec, link)
 
-                self._link_cache[(spec, overrides)] = link
+                # Hack to make pickle work
+                link.comes_from = None
                 source = 'PyPI'
 
-            if link.egg_fragment:
-                version = link.egg_fragment.rsplit('-', 1)[1]
-                link = Link(
-                    link.url_without_fragment + "#%s=%s" % self.get_hash(link)
-                )
-            else:
-                _, version = splitext(link.filename)[0].rsplit('-', 1)
+                if link.egg_fragment:
+                    version = link.egg_fragment.rsplit('-', 1)[1]
+                    link = Link(
+                        link.url_without_fragment + "#%s=%s" % self.get_hash(link)
+                    )
+                elif not version:
+                    _, version = splitext(link.filename)[0].rsplit('-', 1)
+
+                assert version, "Version must be set!"
+                self._link_cache[(spec, overrides)] = (link, version)
 
             # Take this moment to smartly insert the pinned variant of this
             # spec into the link_cache, too
             pinned_spec = Spec.from_pinned(spec.name, version)
             if pinned_spec not in self._link_cache:
-                self._link_cache[pinned_spec] = link
+                self._link_cache[pinned_spec] = (link, version)
+
             return version, source
 
         specline = str(spec)
@@ -393,6 +391,7 @@ class PackageManager(object):
         if '==' not in specline or specline not in self._best_match_call_cache:
             logger.debug('  Found best match: %s (from %s)' % (version, source))
         self._best_match_call_cache[spec] = True
+
         return version
 
     def get_dependencies(self, name, version, extra=()):
@@ -423,6 +422,12 @@ class PackageManager(object):
 
                 source = 'package archive'
 
+        # Run spec hook
+        deps = set([
+            self._spec_hook(self.overrides.get(dep.name), dep)
+            if self.overrides.get(dep.name) else dep
+            for dep in deps])
+
         if spec not in self._dep_call_cache:
             logger.debug('  Found: %s (from %s)' % (deps, source))
 
@@ -436,7 +441,7 @@ class PackageManager(object):
         """Gets list of pinned versions from package"""
         spec = Spec.from_pinned(name, version, extra=extra)
         overrides = self.overrides.get(spec.name)
-        versions = []
+        versions = tuple()
 
         if spec not in self._version_call_cache:
             logger.debug('- Getting versions for %s-%s' % (name, version))
@@ -459,7 +464,7 @@ class PackageManager(object):
             logger.debug('  Found: %s (from %s)' % (versions, source))
 
         self._version_call_cache[spec] = True
-        return versions
+        return versions or tuple()
 
     def get_pkg_info(self, name, version):
         spec = Spec.from_pinned(name, version)
@@ -532,7 +537,7 @@ class PackageManager(object):
         """
         logger.debug('- Getting package location for %s' % (specline,))
         with logger.indent():
-            link = self._link_cache[str(specline)]
+            link, version = self._link_cache[specline]
             fullpath = self._get_local_package_path(link.url_without_fragment)
 
             if os.path.exists(fullpath):
