@@ -1,0 +1,16 @@
+{
+  "*": {
+    "django-celery": {
+      "append_deps": ["pysqlite"],
+      "versions": [
+          "https://raw.github.com/celery/django-celery/v{{ spec.pinned }}/requirements/default.txt",
+          ["https://raw.github.com/celery/django-celery/v{{ spec.pinned }}/requirements/test.txt", "test"]]
+      }
+    },
+  "python33": {
+    "unittest2": {"spec": "unittest2py3k"}
+  },
+  "pypy": {
+    "psycopg2": {"spec": "psycopg2cffi "}
+  }
+}

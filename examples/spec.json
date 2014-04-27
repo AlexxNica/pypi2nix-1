@@ -1,33 +1,19 @@
-{
-  "pkgs": [
-    {"name": "pyramid", "envs": ["python27", "python33"]},
-    {
-      "name": "sentry",
-      "versions": ["django==1.5.5"],
-      "envs": {
-        "python27": {"spec": "sentry[postgres,mysql]"},
-        "pypy": {"spec": "sentry[postgres_pypy]"}
-      }
-    }
-  ],
-  "overrides": {
-    "*": {
-      "sentry": {
-        "deps": ["pysqlite"],
-        "src": "https://github.com/getsentry/sentry/archive/{{ spec.pinned }}.tar.gz"
-      },
-      "django-celery": {
-        "deps": ["pysqlite"],
-        "requirements": [
-          "https://raw.github.com/celery/django-celery/v{{ spec.pinned }}/requirements/default.txt",
-          ["https://raw.github.com/celery/django-celery/v{{ spec.pinned }}/requirements/test.txt", "test"]]
-      }
+[
+  {"name": "pyramid", "envs": ["python27", "python33"]},
+  {
+    "name": "sentry",
+    "envs": {
+      "python27": {"spec": "sentry[postgres,mysql]"},
+      "pypy": {"spec": "sentry[postgres_pypy]"}
     },
-    "python33": {
-      "unittest2": {"spec": "unittest2py3k"}
+    "override": {
+      "append_deps": ["pysqlite"],
+      "src": "https://github.com/getsentry/sentry/archive/{{ spec.pinned }}.tar.gz#egg=sentry-{{spec.pinned}}"
     },
-    "pypy": {
-      "psycopg2": {"spec": "psycopg2cffi"}
+    "overrides": {
+      "nydus": {
+        "override_deps": { "django": "django[test]" }
+      }
     }
   }
-}
+]
