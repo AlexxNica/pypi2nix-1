@@ -50,13 +50,13 @@ class PersistentCache(object):
             os.remove(self._cache_file)
 
     def __contains__(self, item):
-        return hash(item) in self.cache
+        return item in self.cache
 
     def __getitem__(self, key):
-        return self.cache[hash(key)]
+        return self.cache[key]
 
     def __setitem__(self, key, value):
-        self.cache[hash(key)] = value
+        self.cache[key] = value
         self.write_cache()
 
     def get(self, key, default=None):
