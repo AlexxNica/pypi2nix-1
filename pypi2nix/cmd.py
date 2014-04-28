@@ -239,7 +239,7 @@ def main():
     logger.info("=> Loading overrides")
 
     overrides = {}
-    overrides_path = args.overrides or os.path.join(path, ".pypi2nix.json")
+    overrides_path = args.overrides or ".pypi2nix.json"
     if os.path.exists(overrides_path):
         logger.info("- Overrides found %s", overrides_path)
         overrides = json.loads(
@@ -258,14 +258,13 @@ def main():
         logger.info("- Using package on path %s", path)
 
         package = Package(
-            name=args.name, dist_dir=path,
-            exe=sys.executable, python_path=":".join(sys.path))
+            dist_dir=path,exe=sys.executable, python_path=":".join(sys.path))
 
         input_specs = []
-        for dep, extra in package.get_deps(extra=args.extra.split(",")):
+        for dep in package.get_deps(extra=args.extra.split(",")):
             input_specs += [str(dep)]
 
-        for env, resolver in enabled_envs.iteritems():
+        for env in enabled_envs:
             logger.info('')
             logger.info("~> %s for env \"%s\" in progress..." % (input_specs, env))
             logger.info('~> ################################\n')
@@ -278,8 +277,8 @@ def main():
             resolved_alias[env] = resolved_alias.get(env) or {}
 
             resolved_pkgs[env], resolved_alias[env] = \
-                resolver.resolve(
-                    env, specs=input_specs,
+                envs[env].resolve(
+                    specs=input_specs,
                     overrides=local_overrides,
                     dependency_links=package.get_dependency_links()
                 )
