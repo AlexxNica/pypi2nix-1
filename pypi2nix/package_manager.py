@@ -164,12 +164,13 @@ class Package(object):
               version from there
         """
 
-        if fullname and "-" in fullname:
-            return fullname.rsplit("-", 1)
-
         args = self._get_package_setup_arguments() or {}
         if args.get("name") and args.get("version"):
             return (args["name"].lower(), args["version"])
+
+        # This is unreliable, but use as a fallback
+        if fullname and "-" in fullname:
+            return fullname.rsplit("-", 1)
 
         raise Exception("Name or version of %s not found!" % self.dist_dir)
 
