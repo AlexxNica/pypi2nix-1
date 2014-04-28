@@ -256,6 +256,9 @@ class Package(object):
     def _get_package_setup_arguments(self):
         """Mocks setuptools and distutils to get setup arguments"""
 
+        if hasattr(self, "_pkg_setup_arguments_call_cache"):
+            return self._pkg_setup_arguments_call_cache
+
         if not os.path.exists(os.path.join(self.dist_dir, "setup.py")):
             return {}
 
@@ -283,6 +286,7 @@ class Package(object):
             logger.warn("!! setup extract failed for %s, parse error", getattr(self, "name", "noname"))
             logger.warn(out)
             return None
+        self._pkg_setup_arguments_call_cache = parsed
         return parsed
 
 
