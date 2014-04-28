@@ -235,7 +235,7 @@ class Package(object):
 
     def _has_egg_info(self):
         if hasattr(self, "_egg_info_call_cache"):
-            return
+            return True
 
         logger.debug('- Running egg_info in %s' % (self.dist_dir,))
         try:
