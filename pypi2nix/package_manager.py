@@ -130,7 +130,10 @@ class Package(object):
 
         if os.path.exists(dependency_links_path):
             with open(dependency_links_path, 'r') as dependency_links:
-                return [line.strip() for line in dependency_links.readlines()]
+                return [
+                    line.strip() for line in dependency_links.readlines()
+                    if line.strip()
+                ]
 
         return []
 
