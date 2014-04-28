@@ -258,12 +258,9 @@ def main():
         logger.info("- Using package on path %s", path)
 
         package = Package(
-            dist_dir=path,exe=sys.executable, python_path=":".join(sys.path))
+            dist_dir=path, exe=sys.executable, python_path=":".join(sys.path))
 
-        input_specs = []
-        for dep in package.get_deps(extra=args.extra.split(",")):
-            input_specs += [str(dep)]
-
+        input_specs = package.get_deps(extra=args.extra.split(","))
         for env in enabled_envs:
             logger.info('')
             logger.info("~> %s for env \"%s\" in progress..." % (input_specs, env))
@@ -309,7 +306,7 @@ def main():
                 env: penvs.get(env)
                 for env in envs if env in enabled_envs and env in penvs
             }.iteritems():
-                spec = Spec.from_line(info.get("spec"))
+                spec = Spec.from_line(info.get("spec"), source="input")
                 name = info.get("name")
 
                 logger.info('')
@@ -325,8 +322,9 @@ def main():
                 local_overrides.update(info.get("overrides"))
 
                 pkgs, alias = envs[env].resolve(
-                    specs=[str(spec)],
-                    versions=info.get("versions"), overrides=local_overrides
+                    specs=[spec],
+                    versions=set([Spec.from_specline(s) for s in info.get("versions")]),
+                    overrides=local_overrides
                 )
                 resolved_alias[env].update(alias)
                 for res_name, res_info in pkgs.iteritems():

@@ -141,7 +141,7 @@ class PackageResolver(object):
 
     def resolve(
         self, specs,
-        versions=[], overrides={}, extra=(), dependency_links=[]
+        versions=set(), overrides={}, extra=(), dependency_links=[]
     ):
         _overrides = {}
         _overrides.update(self.overrides)
@@ -152,13 +152,12 @@ class PackageResolver(object):
             dependency_links=dependency_links,
         )
 
-        target_specs = [Spec.from_line(spec, source="input") for spec in specs]
-        versions = [Spec.from_line(spec, source="version") for spec in versions]
+        target_specs = specs
 
         logger.info('===> Collecting requirements')
 
         spec_set = SpecSet()
-        for spec in target_specs + versions:
+        for spec in target_specs.union(versions):
             spec_set.add_spec(spec)
 
         logger.info('===> Normalizing requirements')
