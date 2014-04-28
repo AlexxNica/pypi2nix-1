@@ -39,7 +39,12 @@ in {}
 {% for env, pkgs in resolved_alias.iteritems() %}
 // (optionalAttrs (pythonName == "{{ env }}") {
   {% for name, pkg in pkgs.iteritems() %}
-  {{ name }} = self.by-version."{{ resolved_pkgs[env][pkg]["name"] }}-{{ resolved_pkgs[env][pkg]["version"] }}";
+  "{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["name"] }}-{{ resolved_pkgs[env][pkg.fullname]["version"] }}";
+  {% if pkg.extra %}{% for extra in pkg.extra %}
+  {% if extra[0] != "_" %}by-extra.{{extra}}."{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["name"] }}-{{ resolved_pkgs[env][pkg.fullname]["version"] }}";{% endif %}{% endfor %}
+  {% else %}
+  by-extra.default."{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["name"] }}-{{ resolved_pkgs[env][pkg.fullname]["version"] }}";
+  {% endif %}
   {% endfor %}
 })
 {% endfor %}

@@ -222,8 +222,7 @@ class PackageResolver(object):
 
                 result[spec.fullname] = pkg
 
-        get_pinned = lambda name: \
-            next((s.fullname for s in pinned if s.name == name))
+        get_pinned = lambda name: next((s for s in pinned if s.name == name))
 
         return (
             result, {
