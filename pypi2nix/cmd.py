@@ -197,8 +197,16 @@ def main():
     # Setup logging
     setup_logging(args.verbose)
 
+    # Try to create cache folders
+    if not os.path.exists(args.cache_root):
+        os.makedirs(args.cache_root)
+    if not os.path.exists(args.download_cache_root):
+        os.makedirs(args.download_cache_root)
+
     # Create basic cache dict
     cache = collections.defaultdict(dict)
+    if args.update: # if updating remove link cache
+        os.remove(os.path.join(args.cache_root, "link_cache.pickle"))
     cache["link_cache"] = PersistentCache(
         os.path.join(args.cache_root, "link_cache.pickle"))
     cache["pkg_info_cache"] = PersistentCache(
@@ -254,6 +262,7 @@ def main():
     resolved_alias = {}
 
     path = os.path.abspath(args.input)
+    # Hande local packages
     if os.path.isdir(path):
         logger.info("- Using package on path %s", path)
 
@@ -279,6 +288,7 @@ def main():
                     overrides=local_overrides,
                     dependency_links=package.get_dependency_links()
                 )
+    # Handle packages specified in json file
     else:
         # Load input file
         try:
