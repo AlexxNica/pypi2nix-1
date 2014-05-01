@@ -53,7 +53,6 @@ optional arguments:
                         Comma separated names of list of enabled environments
                         (default: ENABLED_ENVS or all avalible environments)
   --extra EXTRA         Comma separated list of additional extra
-  --name NAME           Comma separated list of additional extra
   --cache-root CACHE_ROOT
                         Root of the cache (default: ~/.pip-tools)
   --download-cache-root DOWNLOAD_CACHE_ROOT

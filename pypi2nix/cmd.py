@@ -168,11 +168,6 @@ def main():
         default=""
     )
     parser.add_argument(
-        "--name",
-        help='''Comma separated list of additional extra''',
-        default=""
-    )
-    parser.add_argument(
         "--cache-root",
         help='''Root of the cache (default: ~/.pip-tools)''',
         default=os.path.join(os.path.expanduser('~'), '.pip-tools')
