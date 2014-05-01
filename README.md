@@ -169,13 +169,14 @@ Internal format:
 Testing
 =======
 
-- TODO
+```
+$ python setup.py test
+```
 
 TODO
 ====
 
-- Rewrite packagemanager.py
-- Write basic tests
-- Add support for non pypi sources
-- Add support for per package overrides
-- Add buildout versions support
+- Buildout verion parsing support
+- Differential package generation (suggestion from @garbas)
+- Better test coverage
+- Detection and repair of dependency cycles
