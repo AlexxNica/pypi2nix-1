@@ -180,3 +180,5 @@ TODO
 - Differential package generation (suggestion from @garbas)
 - Better test coverage
 - Detection and repair of dependency cycles
+- Better caching support using something like dogpile.cache
+- Parallel package generation support
