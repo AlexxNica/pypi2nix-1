@@ -1,6 +1,11 @@
 [
   {"name": "pyramid", "envs": ["python27", "python33"]},
   {
+    "name": "Plone",
+    "envs": ["python27"],
+    "versions": "http://dist.plone.org/release/4.3.3/versions.cfg"
+  },
+  {
     "name": "sentry",
     "envs": {
       "python27": {"spec": "sentry[postgres,mysql]"},
