@@ -1,5 +1,6 @@
 # Ignore cram test output
 *.t.err
+*.pyc
 /.tox
 dist
 pypi2nix.egg-info
