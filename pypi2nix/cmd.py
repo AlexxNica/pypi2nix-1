@@ -327,7 +327,7 @@ def main():
                 local_overrides.update(info.get("overrides"))
 
                 pkgs, alias = envs[env].resolve(
-                    specs=[spec],
+                    specs=set([spec]),
                     versions=set([Spec.from_specline(s) for s in info.get("versions")]),
                     overrides=local_overrides
                 )

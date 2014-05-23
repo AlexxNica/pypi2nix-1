@@ -1,19 +1,18 @@
 [
-  {"name": "pyramid", "envs": ["python27", "python33"]},
   {
     "name": "sentry",
     "envs": {
-      "python27": {"spec": "sentry[postgres,mysql]"},
+      "python27": {"spec": "sentry[postgres]"},
       "pypy": {"spec": "sentry[postgres_pypy]"}
-    },
+     },
     "override": {
       "append_deps": ["pysqlite"],
       "src": "https://github.com/getsentry/sentry/archive/{{ spec.pinned }}.tar.gz#egg=sentry-{{spec.pinned}}"
-    },
+     },
     "overrides": {
-      "nydus": {
+       "nydus": {
         "override_deps": { "django": "django[test]" }
       }
-    }
+     }
   }
 ]

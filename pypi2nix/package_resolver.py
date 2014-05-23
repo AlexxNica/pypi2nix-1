@@ -191,6 +191,7 @@ class PackageResolver(object):
                 pkg = {
                     "name": spec.name,
                     "version": spec.pinned,
+                    "extra": spec.extra,
                     "src": {
                         "url": link.url, "algo": hash[0], "sum": hash[1]
                     },

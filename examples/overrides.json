@@ -11,6 +11,6 @@
     "unittest2": {"spec": "unittest2py3k"}
   },
   "pypy": {
-    "psycopg2": {"spec": "psycopg2cffi "}
+    "psycopg2": {"spec": "psycopg2cffi"}
   }
 }

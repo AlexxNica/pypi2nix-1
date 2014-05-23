@@ -74,7 +74,10 @@ in {}
         pkg["extra"].get("_test_suite", []) +
         pkg["extra"].get("_setup_requires", [])
     ) %}self.by-version."{{p}}" {% endfor %}];
-    propagatedBuildInputs = [ {% for p in toset(pkg["deps"]) %}self.by-version."{{p}}" {% endfor %}];
+    propagatedBuildInputs = [
+      {% for p in toset(pkg["deps"]) %}self.by-version."{{p}}" {% endfor %}
+      {% for extra in pkg["extra"] %}{% for p in toset(pkg["extra"].get(extra, [])) %}self.by-version."{{p}}" {% endfor %}{% endfor %}
+    ];
   };
   {% endfor %}
 })
