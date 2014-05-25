@@ -97,8 +97,8 @@ def parse_specline(specline, default_envs):
         return parsed
 
     if isinstance(specline, basestring):
-        spec = Spec.from_line(specline)
-        penvs = {e: {"name": spec.name, "spec": specline} for e in default_envs}
+        penvs = \
+            {e: _parse_scope({"spec": str(specline)}) for e in default_envs}
     elif isinstance(specline, dict):
         penvs = {}
         top_level = _parse_scope(specline)
