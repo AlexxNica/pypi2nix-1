@@ -268,7 +268,7 @@ class Package(object):
                 os.environ["PYTHONPATH"] = self.python_path
             out = subprocess.check_output([
                 self.exe, '-c',
-                'import setuptools, distutils, json, sys;'
+                'import setuptools, distutils, json, sys, runpy;'
                 'dump = lambda **args: sys.stdout.write("#**#"+json.dumps({'
                 '"name": args.get("name"), "version": args.get("version"),'
                 '"install_requires": args.get("install_requires"),'
@@ -276,7 +276,8 @@ class Package(object):
                 '"tests_require": args.get("tests_require"),'
                 '"test_suite": args.get("test_suite"),'
                 '"requires": args.get("requires")}) + "#**#");'
-                'setuptools.setup=dump; distutils.core.setup=dump; import setup'
+                'setuptools.setup=dump; distutils.core.setup=dump;'
+                'runpy.run_module("setup", run_name="__main__")'
             ], cwd=self.dist_dir)
             parsed = json.loads(out.partition('#**#')[-1].rpartition('#**#')[0])
         except subprocess.CalledProcessError:
