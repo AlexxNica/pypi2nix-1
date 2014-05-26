@@ -3,7 +3,7 @@
 
 { pkgs, python, buildPythonPackage, self, overrides }:
   with pkgs.lib;
-{% set testing_extra = ["test", "tests", "testing", "_tests_require", "_test_suite", "_setup_requires"] %}
+{% set testing_extra = ["test", "tests", "testing", "_tests_require", "_test_suite"] %}
 let
   isPy26 = python.majorVersion == "2.6";
   isPy27 = python.majorVersion == "2.7";
@@ -64,16 +64,15 @@ in {}
         {{ pkg["src"]["algo"] }} = "{{ pkg["src"]["sum"] }}";
     };
 
-    doCheck = {% if pkg["has_tests"] %}true{% else %}false{% endif %};
+    doCheck = {% if enable_tests %}{% if pkg["has_tests"] %}true{% else %}false{% endif %}{% else %}false{% endif %};
 
-    buildInputs = [ {% for p in toset(
+    buildInputs = [ {% if enable_tests %}{% for p in toset(
         pkg["extra"].get("test", []) +
         pkg["extra"].get("tests", []) +
         pkg["extra"].get("testing", []) +
         pkg["extra"].get("_tests_require", []) +
-        pkg["extra"].get("_test_suite", []) +
-        pkg["extra"].get("_setup_requires", [])
-    ) %}self.by-version."{{p}}" {% endfor %}];
+        pkg["extra"].get("_test_suite", [])
+    ) %}self.by-version."{{p}}" {% endfor %}{% endif %} ];
     propagatedBuildInputs = [
       {% for p in toset(pkg["deps"]) %}self.by-version."{{p}}" {% endfor %}
       {% for extra in pkg["extra"] if extra not in testing_extra %}{% for p in toset(pkg["extra"].get(extra, [])) %}self.by-version."{{p}}" {% endfor %}{% endfor %}
