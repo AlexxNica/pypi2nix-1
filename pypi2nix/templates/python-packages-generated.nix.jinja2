@@ -39,6 +39,7 @@ in {}
 // (optionalAttrs (pythonName == "{{ env }}") {
   {% for name, pkg in pkgs.iteritems() %}
   "{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["name"] }}-{{ resolved_pkgs[env][pkg.fullname]["version"] }}";
+  generated."{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["name"] }}-{{ resolved_pkgs[env][pkg.fullname]["version"] }}";
   {% if pkg.extra %}{% for extra in pkg.extra %}
   {% if extra[0] != "_" %}by-extra.{{extra}}."{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["name"] }}-{{ resolved_pkgs[env][pkg.fullname]["version"] }}";{% endif %}{% endfor %}
   {% else %}

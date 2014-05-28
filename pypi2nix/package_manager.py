@@ -70,12 +70,15 @@ class Package(object):
         # distutils does not provide egg_info and tests_require is not
         # written out
         to_list = lambda x: x if isinstance(x, list) else [x]
+        flatten = lambda lst: \
+            sum(([x] if not isinstance(x, list) else flatten(x) for x in lst), [])
+
         setup_args = self._get_package_setup_arguments() or {}
         if not deps:
             deps += [
                 (str(p), None) for p in
-                to_list(setup_args.get("install_requires") or []) +
-                to_list(setup_args.get("requires") or [])
+                flatten(to_list(setup_args.get("install_requires") or []) +
+                        to_list(setup_args.get("requires") or []))
                 if p
             ]
 
@@ -83,13 +86,13 @@ class Package(object):
         if "_tests_require" in extra:
             deps += [
                 (str(p), '_tests_require') for p in
-                to_list(setup_args.get("tests_require") or []) if p
+                flatten(to_list(setup_args.get("tests_require") or [])) if p
             ]
         # Native dependencies
         if "_setup_requires" in extra:
             deps += [
                 (str(p), "_setup_requires") for p in
-                to_list(setup_args.get("setup_requires") or []) if p
+                flatten(to_list(setup_args.get("setup_requires") or [])) if p
             ]
         if "_test_suite" in extra:
             # Hardcoded nose collector test suite fix
@@ -158,6 +161,17 @@ class Package(object):
             return True
 
         return True if "test" in out else False
+
+    def read_file(self, path):
+        """Reads file from package"""
+
+        dist_dir = self.dist_dir
+        path = os.path.join(dist_dir, path)
+
+        if not os.path.exists(path):
+            raise Exception("File %s not found in package %s" % (path, self.name))
+
+        return open(path, 'r').read()
 
     def _get_name_version(self, fullname):
         """
@@ -401,6 +415,7 @@ class PackageManager(object):
         self._best_match_call_cache[spec] = True
 
         return version
+
     def get_dependencies(self, name, version, extra=()):
         """Gets list of dependencies from package"""
         spec = Spec.from_pinned(name, version, extra=extra)
@@ -416,6 +431,8 @@ class PackageManager(object):
             else:
                 package = self.get_package(spec)
 
+                if spec.name == "django-celery":
+                    import pdb; pdb.set_trace()
                 deps = package.get_deps(extra=self.extra + extra)
                 deps = self._dependency_hook(overrides, spec, deps, package)
                 self._dep_cache[(spec, overrides)] = deps
@@ -444,7 +461,7 @@ class PackageManager(object):
         """Gets list of pinned versions from package"""
         spec = Spec.from_pinned(name, version, extra=extra)
         overrides = self.overrides.get(spec.name)
-        versions = tuple()
+        versions = set()
 
         if spec not in self._version_call_cache:
             logger.debug('- Getting versions for %s-%s' % (name, version))
@@ -464,7 +481,7 @@ class PackageManager(object):
             logger.debug('  Found: %s (from %s)' % (versions, source))
 
         self._version_call_cache[spec] = True
-        return versions or tuple()
+        return versions or set()
 
     def get_pkg_info(self, name, version):
         spec = Spec.from_pinned(name, version)

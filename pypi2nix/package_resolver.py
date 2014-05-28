@@ -65,6 +65,7 @@ class PackageResolver(object):
     def _parse_versions(self, overrided_versions, spec, package):
         versions = set()
         links = set()
+        content = None
         for line in overrided_versions:
             if isinstance(line, basestring):
                 extra = tuple()
@@ -93,17 +94,7 @@ class PackageResolver(object):
         return versions, links
 
     def _version_hook(self, overrides, spec, package):
-        overrides = overrides or {}
-        if overrides.get("versions"):
-            logger.info(
-                '===> version overrides %s found for package %s',
-                overrides, spec)
-
-            versions, links = self._parse_versions(
-                overrides.get("versions"), spec, package)
-            return versions
-        else:
-            return set()
+        return set()
 
     def _link_hook(self, overrides, spec, link):
         overrides = overrides or {}
@@ -130,7 +121,7 @@ class PackageResolver(object):
         new_deps = set()
         overrides = overrides or {}
 
-        if any(k in overrides for k in ("append_deps", "new_deps", "replace_deps")):
+        if any(k in overrides for k in ("append_deps", "new_deps", "replace_deps", "versions")):
             logger.info(
                 '===> Dependency overrides %s found for package %s',
                 overrides, spec)
@@ -154,6 +145,12 @@ class PackageResolver(object):
                     for dep in new_deps
                     for name, override in overrides.get("replace_deps").iteritems()
                 ])
+
+            if overrides.get("versions"):
+                versions, links = self._parse_versions(
+                    overrides.get("versions"), spec, package)
+
+                new_deps = new_deps.union(versions)
 
             deps = new_deps
 
@@ -195,12 +192,6 @@ class PackageResolver(object):
         _overrides.update(self.overrides)
         _overrides.update(overrides)
 
-        package_manager = self.package_manager(
-            extra=tuple(set(self.extra + self.test_extra + extra)),
-            overrides=_overrides,
-            dependency_links=dependency_links,
-        )
-
         target_specs = specs
 
         logger.info('===> Collecting requirements')
@@ -218,6 +209,13 @@ class PackageResolver(object):
         # Add picked versions to spec set
         for spec in versions:
             spec_set.add_spec(spec)
+
+        # Create package manager
+        package_manager = self.package_manager(
+            extra=tuple(set(self.extra + self.test_extra + extra)),
+            overrides=_overrides,
+            dependency_links=dependency_links,
+        )
 
         logger.info('===> Normalizing requirements')
         with logger.indent():

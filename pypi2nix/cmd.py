@@ -103,7 +103,7 @@ def parse_specline(specline, default_envs):
         penvs = {}
         top_level = _parse_scope(specline)
 
-        if isinstance(specline.get("envs"), list):
+        if isinstance(specline.get("envs"), collections.Iterable):
             envs = {name: {} for name in specline.get("envs")}
         elif isinstance(specline.get("envs"), dict):
             envs = specline.get("envs").copy()
@@ -245,11 +245,10 @@ def main():
         )
 
     # Parse enabled environemnts
-    enabled_envs = envs.keys() \
-        if not args.enabled_envs else args.enabled_envs.split(",")
-    logger.info("=> Enabled envs: %s", enabled_envs)
-
     default_envs = ["python27"]
+    enabled_envs = args.enabled_envs or default_envs
+    enabled_envs = enabled_envs.split(",")
+    logger.info("=> Enabled envs: %s", enabled_envs)
 
     # Load overrides
     logger.info('')
@@ -314,6 +313,7 @@ def main():
         # dependencies, then merge dependencies per env.
         for specline in input_spec or []:
 
+            # Parse specline for all enabled environemnts
             penvs = parse_specline(specline, default_envs)
             with logger.indent():
                 logger.info('')
@@ -342,7 +342,7 @@ def main():
 
                 pkgs, alias = envs[env].resolve(
                     specs=set([spec]),
-                    versions=set([Spec.from_specline(s) for s in info.get("versions")]),
+                    #versions=set([s for s in info.get("versions")]),
                     overrides=local_overrides
                 )
                 resolved_alias[env].update(alias)
@@ -352,7 +352,8 @@ def main():
                         resolved[res_name]["packages"] += [name]
                         for k, v in res_info["extra"].iteritems():
                             resolved[res_name]["extra"][k] = list(
-                                set(resolved[res_name]["extra"][k] + v))
+                                set(resolved[res_name]["extra"].get(k, []) + v)
+                            )
                     else:
                         res_info["packages"] = [name]
                         resolved.update({res_name: res_info})
