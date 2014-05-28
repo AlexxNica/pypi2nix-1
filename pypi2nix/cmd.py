@@ -182,10 +182,6 @@ def main():
         help='''Package overrides (default: ''',
         default=""
     )
-    parser.add_argument(
-        "--enable-tests", action="store_true",
-        help='''Enables generation of testing dependencies''',
-    )
     parser.add_argument("input", help="Input json or setup.py file")
     parser.add_argument(
         "output", help="Output nix file (default stdout)",
@@ -350,9 +346,7 @@ def main():
     logger.info('')
     logger.info("=> Rendering template")
     result = pypi2nix_template.render(
-        resolved_alias=resolved_alias, resolved_pkgs=resolved_pkgs,
-        enable_tests=args.enable_tests
-    )
+        resolved_alias=resolved_alias, resolved_pkgs=resolved_pkgs)
 
     logger.info("=> Generating output file")
     args.output.write(result)
