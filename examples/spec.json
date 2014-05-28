@@ -16,7 +16,7 @@
      },
     "overrides": {
        "nydus": {
-        "override_deps": { "django": "django[test]" }
+        "replace_deps": { "django": "django[test]" }
       }
      }
   }

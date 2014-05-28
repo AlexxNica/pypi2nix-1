@@ -168,6 +168,11 @@ def main():
         default=""
     )
     parser.add_argument(
+        "--test-extra",
+        help='''Comma separated test extras to use (default: "test", "tests", "testing", "_tests_require", "_setup_requires", "_test_suite"''',
+        default="test,tests,testing,_tests_require,_setup_requires,_test_suite"
+    )
+    parser.add_argument(
         "--cache-root",
         help='''Root of the cache (default: ~/.pip-tools)''',
         default=os.path.join(os.path.expanduser('~'), '.pip-tools')
@@ -181,6 +186,11 @@ def main():
         "--overrides",
         help='''Package overrides (default: ''',
         default=""
+    )
+    parser.add_argument(
+        "--test-profile",
+        help='''Profile used for generating tests (all, top_level or none, default: top_level)''',
+        default="top_level"
     )
     parser.add_argument("input", help="Input json or setup.py file")
     parser.add_argument(
@@ -200,12 +210,15 @@ def main():
 
     # Create basic cache dict
     cache = collections.defaultdict(dict)
-    if args.update: # if updating remove link cache
+    if args.update:  # if updating remove link cache
         os.remove(os.path.join(args.cache_root, "link_cache.pickle"))
     cache["link_cache"] = PersistentCache(
         os.path.join(args.cache_root, "link_cache.pickle"))
     cache["pkg_info_cache"] = PersistentCache(
         os.path.join(args.cache_root, "pkginfo.pickle"))
+
+    # Testing extras
+    test_extra = tuple(args.test_extra.split(","))
 
     # Parse environments from provided comma separated string
     envs = {}
@@ -227,7 +240,8 @@ def main():
         # Create reslvers for each enviroment
         envs[name] = PackageResolver(
             download_cache_root=args.download_cache_root, cache=env_cache,
-            exe=path, python_path=python_path
+            exe=path, python_path=python_path,
+            test_extra=test_extra, test_profile=args.test_profile
         )
 
     # Parse enabled environemnts
@@ -346,7 +360,9 @@ def main():
     logger.info('')
     logger.info("=> Rendering template")
     result = pypi2nix_template.render(
-        resolved_alias=resolved_alias, resolved_pkgs=resolved_pkgs)
+        resolved_alias=resolved_alias, resolved_pkgs=resolved_pkgs,
+        test_extra=test_extra
+    )
 
     logger.info("=> Generating output file")
     args.output.write(result)

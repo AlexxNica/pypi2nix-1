@@ -78,22 +78,26 @@ class Package(object):
                 to_list(setup_args.get("requires") or [])
                 if p
             ]
+
         # This should be written by egg_info, but it's not
-        deps += [
-            (str(p), '_tests_require') for p in
-            to_list(setup_args.get("tests_require") or []) if p
-        ]
+        if "_tests_require" in extra:
+            deps += [
+                (str(p), '_tests_require') for p in
+                to_list(setup_args.get("tests_require") or []) if p
+            ]
         # Native dependencies
-        deps += [
-            (str(p), "_setup_requires") for p in
-            to_list(setup_args.get("setup_requires") or []) if p
-        ]
-        # Hardcoded nose collector test suite fix
-        if (
-            "nose.collector" in (setup_args.get("test_suite") or "")
-            and name != "nose"
-        ):
-            deps += [('nose', '_test_suite')]
+        if "_setup_requires" in extra:
+            deps += [
+                (str(p), "_setup_requires") for p in
+                to_list(setup_args.get("setup_requires") or []) if p
+            ]
+        if "_test_suite" in extra:
+            # Hardcoded nose collector test suite fix
+            if (
+                "nose.collector" in (setup_args.get("test_suite") or "")
+                and name != "nose"
+            ):
+                deps += [('nose', '_test_suite')]
 
         # Convert to specs before returning
         return set([
@@ -362,12 +366,7 @@ class PackageManager(object):
                         specline, prereleases=True)
                     link = self.finder.find_requirement(requirement, False)
 
-                if overrides:
-                    logger.info(
-                        '===> Link override %s found for package %s',
-                        overrides, spec)
-
-                    link, version = self._link_hook(overrides, spec, link)
+                link, version = self._link_hook(overrides, spec, link)
 
                 # Hack to make pickle work
                 link.comes_from = None
@@ -402,7 +401,6 @@ class PackageManager(object):
         self._best_match_call_cache[spec] = True
 
         return version
-
     def get_dependencies(self, name, version, extra=()):
         """Gets list of dependencies from package"""
         spec = Spec.from_pinned(name, version, extra=extra)
@@ -419,11 +417,7 @@ class PackageManager(object):
                 package = self.get_package(spec)
 
                 deps = package.get_deps(extra=self.extra + extra)
-                if overrides:
-                    logger.info(
-                        '===> Dependency overrides %s found for package %s',
-                        overrides, spec)
-                    deps = self._dependency_hook(overrides, spec, deps, package)
+                deps = self._dependency_hook(overrides, spec, deps, package)
                 self._dep_cache[(spec, overrides)] = deps
 
                 links = package.get_dependency_links()
@@ -460,9 +454,6 @@ class PackageManager(object):
                 source = 'version cache'
             else:
                 if overrides:
-                    logger.info(
-                        '===> Version overrides %s found for package %s',
-                        overrides, spec)
                     package = self.get_package(spec)
                     versions = self._version_hook(overrides, spec, package)
                     self._version_cache[(spec, overrides)] = versions

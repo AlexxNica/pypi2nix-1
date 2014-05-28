@@ -103,11 +103,11 @@ Pypi2nix format speciffication:
     "override": {
       "src": "https://github.com/complex/package/archive/{{ spec.pinned }}.tar.gz", <- override src
 
-      "deps": [ "package-dep-B==2.0", ... ], <- redefine dependencies
-      - or (by default takes deps) -
+      "new_deps": [ "package-dep-B==2.0", ... ], <- redefine dependencies
+
       "append_deps": [  "package-dep-B==2.0", ... ], <- append dependencies
 
-      "override_deps": { <- override dependencies
+      "replace_deps": { <- replace dependencies
         "package-dep-C": "package-dep-B[extra]"
       }
     },

@@ -13,6 +13,7 @@ from .log import logger
 from .datastructures import Spec, SpecSet, first
 from .package_manager import PackageManager
 from .dependency_resolver import DependencyResolver
+from .caching import hashabledict
 
 env = Environment()
 
@@ -22,7 +23,14 @@ class PackageResolver(object):
         self,
         exe=sys.executable, python_path=":".join(sys.path),
         download_cache_root="/tmp", cache=defaultdict(dict),
-        overrides={}, extra=("test", "tests", "testing")
+        overrides={}, test_profile="top_level",
+
+        # Additional internal extra used
+        extra=("_setup_requires",),
+        test_extra=(
+            "test", "tests", "testing",
+            "_tests_require", "_setup_requires", "_test_suite"
+        )
     ):
 
         self.package_manager = partial(
@@ -36,6 +44,8 @@ class PackageResolver(object):
         )
 
         self.extra = extra
+        self.test_extra = test_extra
+        self.test_profile = test_profile
         self.overrides = overrides
 
     def _parse_buildout(self, content):
@@ -51,21 +61,6 @@ class PackageResolver(object):
             ])
 
         return versions, set()
-
-    def _link_hook(self, overrides, spec, link):
-        if overrides.get("src"):
-            _, version = splitext(link.filename)[0].rsplit('-', 1)
-            spec = Spec.from_pinned(name=spec.name, version=version)
-            src = env.from_string(
-                overrides.get("src")).render({"spec": spec})
-            link = Link(src)
-
-            # Hack to make pickle work
-            link.comes_from = None
-
-            return link, spec.pinned
-
-        return link, None
 
     def _parse_versions(self, overrided_versions, spec, package):
         versions = set()
@@ -98,37 +93,90 @@ class PackageResolver(object):
         return versions, links
 
     def _version_hook(self, overrides, spec, package):
+        overrides = overrides or {}
         if overrides.get("versions"):
+            logger.info(
+                '===> version overrides %s found for package %s',
+                overrides, spec)
+
             versions, links = self._parse_versions(
                 overrides.get("versions"), spec, package)
             return versions
         else:
             return set()
 
+    def _link_hook(self, overrides, spec, link):
+        overrides = overrides or {}
+        if overrides.get("src"):
+            logger.info(
+                '===> Link override %s found for package %s',
+                overrides, spec)
+
+            _, version = splitext(link.filename)[0].rsplit('-', 1)
+            spec = Spec.from_pinned(name=spec.name, version=version)
+            src = env.from_string(
+                overrides.get("src")).render({"spec": spec})
+            link = Link(src)
+
+            # Hack to make pickle work
+            link.comes_from = None
+
+            return link, spec.pinned
+
+        return link, None
+
     def _dependency_hook(self, overrides, spec, deps, package):
         """Hook for adding or replacing dependencies"""
         new_deps = set()
+        overrides = overrides or {}
 
-        for dep in overrides.get("append_deps", tuple()) + overrides.get("deps", tuple()):
-            new_deps.update([Spec.from_line(dep, source="dependency_hook")])
+        if any(k in overrides for k in ("append_deps", "new_deps", "replace_deps")):
+            logger.info(
+                '===> Dependency overrides %s found for package %s',
+                overrides, spec)
 
-        if not overrides.get("deps"):
-            new_deps = deps.union(new_deps)
+            for dep in overrides.get("append_deps", tuple()) \
+                    + overrides.get("new_deps", tuple()):
+                new_deps.update(
+                    [Spec.from_line(dep, source="dependency_hook")]
+                )
 
-        if overrides.get("override_deps"):
-            # Override dependencies for package
-            new_deps = set([
-                Spec.from_line(override, source="dependency_hook")
-                if dep.name == name else dep
-                for dep in new_deps
-                for name, override in overrides.get("override_deps").iteritems()
-            ])
+            # If we are not replacing all dependencies, just append then to deps
+            if not overrides.get("new_deps"):
+                new_deps = deps.union(new_deps)
 
-        return new_deps
+            # Replace defined dependencies
+            if overrides.get("replace_deps"):
+                # Override dependencies for package
+                new_deps = set([
+                    Spec.from_line(override, source="dependency_hook")
+                    if dep.name == name else dep
+                    for dep in new_deps
+                    for name, override in overrides.get("replace_deps").iteritems()
+                ])
+
+            deps = new_deps
+
+        # If testing profile is top_level and it is top_level package,
+        # or testing_profile is none, then remove testing dependencies
+        if not (self.test_profile == "top_level" and overrides.get("tlp")) or \
+                self.test_profile == "none":
+            deps = [
+                s for s in deps
+                if (s.extra and s.extra[0] not in self.test_extra)
+                or not s.extra
+            ]
+
+        return deps
 
     def _spec_hook(self, overrides, spec):
         """Hook which can replace speciffications"""
+        overrides = overrides or {}
         if overrides.get("spec"):
+            logger.info(
+                '===> Spec overrides %s found for package %s',
+                overrides, spec)
+
             new_spec = Spec.from_line(overrides.get("spec"), source="spec_hook")
             if not new_spec.extra and spec.extra:
                 new_spec._extra = spec._extra
@@ -148,7 +196,8 @@ class PackageResolver(object):
         _overrides.update(overrides)
 
         package_manager = self.package_manager(
-            extra=tuple(set(self.extra + extra)), overrides=_overrides,
+            extra=tuple(set(self.extra + self.test_extra + extra)),
+            overrides=_overrides,
             dependency_links=dependency_links,
         )
 
@@ -157,7 +206,17 @@ class PackageResolver(object):
         logger.info('===> Collecting requirements')
 
         spec_set = SpecSet()
-        for spec in target_specs.union(versions):
+        tlp = []  # Top level packages
+
+        # Add specs to spec_set and add override for spec as top level packages
+        for spec in target_specs:
+            spec_set.add_spec(spec)
+            _overrides[spec.name] = _overrides.get(spec.name, hashabledict())
+            _overrides[spec.name].update(hashabledict(tlp=True))
+            tlp.append(spec.name)
+
+        # Add picked versions to spec set
+        for spec in versions:
             spec_set.add_spec(spec)
 
         logger.info('===> Normalizing requirements')
@@ -195,7 +254,10 @@ class PackageResolver(object):
                     "src": {
                         "url": link.url, "algo": hash[0], "sum": hash[1]
                     },
-                    "has_tests": pkg_info["has_tests"],
+                    "has_tests":
+                    (pkg_info["has_tests"] and self.test_profile == "all") or
+                    (pkg_info["has_tests"] and spec.name in tlp
+                     and self.test_profile == "top_level"),
                     "deps": [], "extra": {},
                     "meta": {
                         "homepage": pkg_info["Home-page"]

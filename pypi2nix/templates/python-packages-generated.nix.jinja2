@@ -3,7 +3,6 @@
 
 { pkgs, python, buildPythonPackage, self, overrides }:
   with pkgs.lib;
-{% set testing_extra = ["test", "tests", "testing", "_tests_require", "_test_suite", "_setup_requires"] %}
 let
   isPy26 = python.majorVersion == "2.6";
   isPy27 = python.majorVersion == "2.7";
@@ -76,7 +75,7 @@ in {}
     ) %}self.by-version."{{p}}" {% endfor %}];
     propagatedBuildInputs = [
       {% for p in toset(pkg["deps"]) %}self.by-version."{{p}}" {% endfor %}
-      {% for extra in pkg["extra"] if extra not in testing_extra %}{% for p in toset(pkg["extra"].get(extra, [])) %}self.by-version."{{p}}" {% endfor %}{% endfor %}
+      {% for extra in pkg["extra"] if extra not in test_extra %}{% for p in toset(pkg["extra"].get(extra, [])) %}self.by-version."{{p}}" {% endfor %}{% endfor %}
     ];
   };
   {% endfor %}
