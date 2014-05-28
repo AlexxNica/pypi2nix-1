@@ -29,12 +29,14 @@ Usage
 =====
 
 ```
-usage: pypi2nix [-h] [--update] [--verbose] [--envs ENVS]
-                [--enabled-envs ENABLED_ENVS] [--extra EXTRA] [--name NAME]
-                [--cache-root CACHE_ROOT]
-                [--download-cache-root DOWNLOAD_CACHE_ROOT]
-                [--overrides OVERRIDES]
-                input output
+usage: ..pypi2nix-wrapped-wrapped [-h] [--update] [--verbose] [--envs ENVS]
+                                  [--enabled-envs ENABLED_ENVS]
+                                  [--extra EXTRA] [--test-extra TEST_EXTRA]
+                                  [--cache-root CACHE_ROOT]
+                                  [--download-cache-root DOWNLOAD_CACHE_ROOT]
+                                  [--overrides OVERRIDES]
+                                  [--test-profile TEST_PROFILE]
+                                  input output
 
 pypi2nix, dont write them by hand :)
 
@@ -53,6 +55,10 @@ optional arguments:
                         Comma separated names of list of enabled environments
                         (default: ENABLED_ENVS or all avalible environments)
   --extra EXTRA         Comma separated list of additional extra
+  --test-extra TEST_EXTRA
+                        Comma separated test extras to use (default: "test",
+                        "tests", "testing", "_tests_require",
+                        "_setup_requires", "_test_suite"
   --cache-root CACHE_ROOT
                         Root of the cache (default: ~/.pip-tools)
   --download-cache-root DOWNLOAD_CACHE_ROOT
@@ -60,6 +66,9 @@ optional arguments:
                         tools/cache)
   --overrides OVERRIDES
                         Package overrides (default:
+  --test-profile TEST_PROFILE
+                        Profile used for generating tests (all, top_level or
+                        none, default: top_level)
 ```
 
 Input format
@@ -83,22 +92,6 @@ Pypi2nix format speciffication:
     - packages speciffication (optional, default takes name as spec) -
     "spec": "complex-package==1.0",
 
-    - picks dependencies (optional) -
-    "versions": "complex-package-dep-A==1.0.0", <- requirements versions
-    - or -
-    "versions": "(file|http|https)_://<url>.txt", <- requirements file
-    - or -
-    "versions": ["(file|http|https)_://<url>.txt", extra] <- requirements file + extra
-    - or -
-    "versions": "(file|http|https)_://<url>.cfg", <- buildout file
-    - or -
-    "versions": [
-      "complex-package-dep==1.0.0", <- requirements versions
-      "(file|http|https)_://<url>.txt", <- requirements file
-      ["(file|http|https)_://<url>.txt", "extra"], <- requirements file + extra
-      "(file|http|https)_://<url>.cfg", <- buildout file
-    ],
-
     - overrides this package (optional) -
     "override": {
       "src": "https://github.com/complex/package/archive/{{ spec.pinned }}.tar.gz", <- override src
@@ -110,6 +103,23 @@ Pypi2nix format speciffication:
       "replace_deps": { <- replace dependencies
         "package-dep-C": "package-dep-B[extra]"
       }
+
+      - picks dependencies (optional) -
+      "versions": "complex-package-dep-A==1.0.0", <- requirements versions
+      - or -
+      "versions": "(file|http|https)_://<url>.txt", <- requirements file
+      - or -
+      "versions": ["(file|http|https)_://<url>.txt", extra] <- requirements file + extra
+      - or -
+      "versions": "(file|http|https)_://<url>.cfg", <- buildout file
+      - or -
+      "versions": [
+        "complex-package-dep==1.0.0", <- requirements versions
+        "(file|http|https)_://<url>.txt", <- requirements file
+        ["(file|http|https)_://<url>.txt", "extra"], <- requirements file + extra
+        "(file|http|https)_://<url>.cfg", <- buildout file
+      ],
+
     },
 
     - overrides this package or dependant packages (optional) -
@@ -127,7 +137,6 @@ Pypi2nix format speciffication:
       - or -
       "pypy": {
         "spec": "complex-package[pypy]", <- define extra
-        "versions": <versions>,
         "override": <override>,
         "overrides": <overrides>
       }
