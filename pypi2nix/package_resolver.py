@@ -1,6 +1,8 @@
 import os
 import sys
 import requests
+import ConfigParser
+import StringIO
 
 from collections import defaultdict
 from functools import partial
@@ -49,7 +51,34 @@ class PackageResolver(object):
         self.overrides = overrides
 
     def _parse_buildout(self, content):
-        return [], []
+
+        def parse(text):
+            versions = dict()
+
+            fp = StringIO.StringIO(text)
+            parser = ConfigParser.ConfigParser()
+            parser.readfp(fp)
+
+            if parser.has_section('buildout') and \
+               parser.has_option('buildout', 'extends'):
+
+                for url in parser.get('buildout', 'extends').split():
+                    logger.info('===> Getting version from ' + url)
+                    request = requests.get(url)
+                    versions.update(parse(request.text))
+
+                if parser.has_section('versions'):
+                    versions.update({
+                        package: version
+                        for package, version in parser.items('versions')
+                    })
+
+            return versions
+
+        return set([
+            Spec.from_pinned(package, version)
+            for package, version in parse(content).items()
+        ]), set()
 
     def _parse_requirements(self, content, extra):
         versions = set()

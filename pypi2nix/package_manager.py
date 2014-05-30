@@ -431,8 +431,6 @@ class PackageManager(object):
             else:
                 package = self.get_package(spec)
 
-                if spec.name == "django-celery":
-                    import pdb; pdb.set_trace()
                 deps = package.get_deps(extra=self.extra + extra)
                 deps = self._dependency_hook(overrides, spec, deps, package)
                 self._dep_cache[(spec, overrides)] = deps

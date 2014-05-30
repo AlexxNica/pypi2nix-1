@@ -173,7 +173,7 @@ class SpecSet(object):
         if isinstance(spec, basestring):
             spec = Spec.from_line(spec)
 
-        self._byname[spec.name].add(spec)
+        self._byname[str(spec.name)].add(spec)
 
     def explode(self, name):
         """Explodes the list of all Specs for the given package name into

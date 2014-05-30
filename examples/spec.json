@@ -1,6 +1,6 @@
 [
   "graph-explorer",
-  { 
+  {
     "spec": "numpy",
     "envs": ["python26", "python27", "python33", "pypy"]
   },
@@ -8,24 +8,24 @@
     "spec": "scipy",
     "envs": ["python26", "python27", "python33", "pypy"]
   },
-  {  
+  {
     "spec": "django",
     "envs": ["python26", "python27", "python33", "pypy"]
   },
-  {   
+  {
     "spec": "django-celery",
     "override": {
       "versions": [
         "file://requirements/default.txt",
          ["file://requirements/test.txt", "test"]
       ]
-    } 
+    }
   },
-  {  
+  {
     "spec": "celery",
     "envs": ["python26", "python27", "python33", "pypy"]
   },
-  {  
+  {
     "spec": "pyramid",
     "envs": ["python26", "python27", "python33", "pypy"]
   },
@@ -33,12 +33,12 @@
     "spec": "almir",
     "override": {"versions": ["sqlalchemy==0.7.10", "pyramid_jinja2==1.9"]}
   },
-  {   
+  {
     "spec": "graphite-api",
     "override": {"append_deps": ["graphite-influxdb"]},
     "envs": ["python26", "python27", "python33", "pypy"]
   },
-  {    
+  {
     "name": "sentry",
     "envs": {
       "python27": {"spec": "sentry[postgres]"},
