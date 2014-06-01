@@ -51,7 +51,7 @@ _VERSION_RE = re.compile(r'''
                                    # 'rc'= alias for release candidate
         (?P<prerelversion>\d+(?:\.\d+)*)
     )?
-    (?P<postdev>(\.post(?P<post>\d+))?(\.?dev(?P<dev>\d*))?)?
+    (?P<postdev>(\.post(?P<post>\d+))?(\.?dev\-?r?(?P<dev>\d*))?)?
     $''', re.VERBOSE)
 
 
