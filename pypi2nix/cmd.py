@@ -169,8 +169,8 @@ def main():
     )
     parser.add_argument(
         "--test-extra",
-        help='''Comma separated test extras to use (default: "test", "tests", "testing", "_tests_require", "_setup_requires", "_test_suite"''',
-        default="test,tests,testing,_tests_require,_setup_requires,_test_suite"
+        help='''Comma separated test extras to use (default: "test", "tests", "testing", "_tests_require", "_test_suite"''',
+        default="test,tests,testing,_tests_require,_test_suite"
     )
     parser.add_argument(
         "--cache-root",
