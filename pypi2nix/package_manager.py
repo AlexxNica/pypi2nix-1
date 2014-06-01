@@ -394,13 +394,16 @@ class PackageManager(object):
                 elif not version:
                     _, version = splitext(link.filename)[0].rsplit('-', 1)
 
+                # It's more reliable to get version from pinned spec then filename
+                if spec.is_pinned:
+                    version = spec.pinned
+
                 assert version, "Version must be set!"
                 self._link_cache[(spec, overrides)] = (link, version)
 
-            # Take this moment to smartly insert the pinned variant of this
-            # spec into the link_cache, too
-            pinned_spec = Spec.from_pinned(spec.name, version)
-            if pinned_spec not in self._link_cache:
+                # Take this moment to smartly insert the pinned variant of this
+                # spec into the link_cache, too
+                pinned_spec = Spec.from_pinned(spec.name, version)
                 self._link_cache[pinned_spec] = (link, version)
 
             return version, source
