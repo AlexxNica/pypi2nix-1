@@ -413,7 +413,12 @@ class SpecSet(object):
         """
         new_spec_set = SpecSet()
         for name in self._byname:
-            new_spec_set.add_spec(self.normalize_specs_for_name(name))
+            try:
+                new_spec_set.add_spec(self.normalize_specs_for_name(name))
+            except ConflictError:
+                spec = [s for s in self._byname[name] if s.is_pinned]
+                if not spec or len(spec) > 1: raise
+                new_spec_set.add_spec(spec[0])
         return new_spec_set
 
     def __str__(self):
