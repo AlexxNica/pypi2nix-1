@@ -18,6 +18,7 @@
   };
   django-celery = p: { buildInputs = p.buildInputs ++ [python.modules.sqlite3]; };
   graphite-api = { doCheck = false; };
+  plone = { doCheck = false; };
   numpy = {
     preBuild = ''export BLAS=${pkgs.blas} LAPACK=${pkgs.liblapack}'';
     setupPyBuildFlags = ["--fcompiler='gnu95'"];
@@ -28,6 +29,11 @@
     buildInputs = p.buildInputs ++ [pkgs.which pkgs.bacula];
     postInstall = ''
       ln -s ${pkgs.bacula}/bin/bconsole $out/bin
+    '';
+  };
+  pyramid = {
+    preCheck = ''
+      rm pyramid/tests/test_response.py
     '';
   };
 }

@@ -15,7 +15,7 @@
   {
     "spec": "django-celery",
     "override": {
-      "versions": [
+      "new_deps": [
         "file://requirements/default.txt",
          ["file://requirements/test.txt", "test"]
       ]
@@ -45,7 +45,15 @@
       "pypy": {"spec": "sentry[postgres_pypy]"}
      },
     "override": {
-      "append_deps": ["pysqlite"]
+      "append_deps": ["pysqlite"],
+      "src" : "https://github.com/getsentry/sentry/archive/{{ spec.pinned }}.tar.gz#egg=sentry-{{ spec.pinned }}"
      }
+  },
+  {
+    "spec": "Plone==4.3.3",
+    "envs": ["python27"],
+    "override": {
+      "versions": ["http://dist.plone.org/release/{{ spec.pinned }}/versions.cfg"]
+    }
   }
 ]

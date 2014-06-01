@@ -17,8 +17,8 @@ in pkgs.buildEnv {
   name = "pypi2nix-examples";
   paths = [
     pypi."graph-explorer"
-    pypi."numpy"
-    pypi."scipy"
+    #pypi."numpy"
+    #pypi."scipy"
     pypi."django"
     pypi."django-celery"
     pypi."celery"
@@ -26,5 +26,6 @@ in pkgs.buildEnv {
     pypi."almir"
     pypi."graphite-api"
     pypi."sentry"
+    pypi."plone"
   ];
 }
