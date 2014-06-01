@@ -25,7 +25,7 @@ class PackageResolver(object):
         self,
         exe=sys.executable, python_path=":".join(sys.path),
         download_cache_root="/tmp", cache=defaultdict(dict),
-        overrides={}, test_profile="top_level",
+        overrides={}, test_profile="top_level", remove_circular_deps=True,
 
         # Additional internal extra used
         extra=("_setup_requires",),
@@ -49,6 +49,7 @@ class PackageResolver(object):
         self.test_extra = test_extra
         self.test_profile = test_profile
         self.overrides = overrides
+        self.remove_circular_deps = remove_circular_deps
 
     def _parse_buildout(self, content):
 
@@ -276,6 +277,7 @@ class PackageResolver(object):
                 hash = package_manager.get_hash(link)
                 pkg = {
                     "name": spec.name,
+                    "fullname": spec.name + "-" + spec.pinned,
                     "version": spec.pinned,
                     "extra": spec.extra,
                     "src": {
@@ -288,7 +290,8 @@ class PackageResolver(object):
                     "deps": [], "extra": {},
                     "meta": {
                         "homepage": pkg_info["Home-page"]
-                    } if pkg_info else {}
+                    } if pkg_info else {},
+                    "has_circular_deps": False, "checked": False
                 }
 
                 deps = package_manager.get_dependencies(
@@ -311,6 +314,42 @@ class PackageResolver(object):
                             pkg["extra"][section].append(pinned_dep.fullname)
 
                 result[spec.fullname] = pkg
+
+        def _remove_circular_deps(pkg, visited=[]):
+            if pkg["checked"]:
+                return pkg
+
+            new_deps = [
+                _remove_circular_deps(
+                    result[dep], visited + [pkg["fullname"]])["fullname"]
+                for dep in pkg["deps"] if not dep in visited
+            ]
+            if new_deps != pkg["deps"]:
+                logger.info('- Circular deps detected in package %s' %pkg["fullname"])
+                pkg["has_circular_deps"] = True
+                pkg["deps"] = new_deps
+
+            for section in pkg["extra"]:
+                new_deps = [
+                    _remove_circular_deps(
+                        result[dep], visited + [pkg["fullname"]])["fullname"]
+                    for dep in pkg["extra"][section] if not dep in visited
+                ]
+                if new_deps != pkg["extra"][section]:
+                    logger.info(
+                        '- Circular deps detected in package %s for extra %s'
+                        % (pkg["fullname"], section))
+                    pkg["has_circula_deps"] = True
+                    pkg["extra"][section] = new_deps
+
+            pkg["checked"] = True
+            return pkg
+
+        logger.info('===> Removing circular dependencies')
+
+        if self.remove_circular_deps:
+            for name, pkg in result.iteritems():
+                _remove_circular_deps(pkg)
 
         get_pinned = lambda name: next((s for s in pinned if s.name == name))
 
