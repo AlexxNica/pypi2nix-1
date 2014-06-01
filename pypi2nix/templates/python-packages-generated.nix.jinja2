@@ -66,6 +66,8 @@ in {}
 
     doCheck = {% if pkg["has_tests"] %}true{% else %}false{% endif %};
 
+    {% if pkg["has_circular_deps"] %}installCommand=''easy_install --always-unzip --no-deps --prefix="$out" .'';{% endif %}
+
     buildInputs = [ {% for p in toset(
         pkg["extra"].get("test", []) +
         pkg["extra"].get("tests", []) +
