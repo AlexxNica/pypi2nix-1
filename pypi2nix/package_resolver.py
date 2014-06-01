@@ -30,8 +30,7 @@ class PackageResolver(object):
         # Additional internal extra used
         extra=("_setup_requires",),
         test_extra=(
-            "test", "tests", "testing",
-            "_tests_require", "_setup_requires", "_test_suite"
+            "test", "tests", "testing", "_tests_require", "_test_suite"
         )
     ):
 
