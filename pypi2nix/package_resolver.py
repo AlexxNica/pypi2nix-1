@@ -121,10 +121,20 @@ class PackageResolver(object):
                 versions.update(_versions)
                 links.update(_links)
 
-        return versions, links
+        return versions
 
     def _version_hook(self, overrides, spec, package):
-        return set()
+        overrides = overrides or {}
+        if overrides.get("versions"):
+            logger.info(
+                '===> version overrides %s found for package %s',
+                overrides, spec)
+
+            versions = self._parse_versions(
+                overrides.get("versions"), spec, package)
+            return versions
+        else:
+            return set()
 
     def _link_hook(self, overrides, spec, link):
         overrides = overrides or {}
@@ -151,50 +161,51 @@ class PackageResolver(object):
         new_deps = set()
         overrides = overrides or {}
 
-        if any(k in overrides for k in ("append_deps", "new_deps", "replace_deps", "versions")):
+        if any(k in overrides for k in ("append_deps", "new_deps", "replace_deps")):
             logger.info(
                 '===> Dependency overrides %s found for package %s',
                 overrides, spec)
 
-            for dep in overrides.get("append_deps", tuple()) \
-                    + overrides.get("new_deps", tuple()):
-                new_deps.update(
-                    [Spec.from_line(dep, source="dependency_hook")]
-                )
+        for dep in self._parse_versions(
+            overrides.get("append_deps", tuple()) +
+            overrides.get("new_deps", tuple()),
+            spec, package
+        ):
+            new_deps.update([dep])
 
-            # If we are not replacing all dependencies, just append then to deps
-            if not overrides.get("new_deps"):
-                new_deps = deps.union(new_deps)
+        # If we are not replacing all dependencies, just append then to deps
+        if not overrides.get("new_deps"):
+            new_deps = deps.union(new_deps)
 
-            # Replace defined dependencies
-            if overrides.get("replace_deps"):
-                # Override dependencies for package
-                new_deps = set([
-                    Spec.from_line(override, source="dependency_hook")
-                    if dep.name == name else dep
-                    for dep in new_deps
-                    for name, override in overrides.get("replace_deps").iteritems()
-                ])
+        # Replace defined dependencies
+        if overrides.get("replace_deps"):
+            # Override dependencies for package
+            new_deps = set([
+                Spec.from_line(override, source="dependency_hook")
+                if dep.name == name else dep
+                for dep in new_deps
+                for name, override in
+                overrides.get("replace_deps").iteritems()
+            ])
 
-            if overrides.get("versions"):
-                versions, links = self._parse_versions(
-                    overrides.get("versions"), spec, package)
-
-                new_deps = new_deps.union(versions)
-
-            deps = new_deps
+        # Remove dependencies
+        if overrides.get("remove_deps"):
+            new_deps = set([
+                d for d in new_deps
+                if d.name not in overrides.get("remove_deps")
+            ])
 
         # If testing profile is top_level and it is top_level package,
         # or testing_profile is none, then remove testing dependencies
         if not (self.test_profile == "top_level" and overrides.get("tlp")) or \
                 self.test_profile == "none":
-            deps = [
-                s for s in deps
+            new_deps = [
+                s for s in new_deps
                 if (s.extra and s.extra[0] not in self.test_extra)
                 or not s.extra
             ]
 
-        return deps
+        return new_deps
 
     def _spec_hook(self, overrides, spec):
         """Hook which can replace speciffications"""
