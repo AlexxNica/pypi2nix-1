@@ -19,11 +19,22 @@
   django-celery = p: { buildInputs = p.buildInputs ++ [python.modules.sqlite3]; };
   graphite-api = { doCheck = false; };
   plone = { doCheck = false; };
+  relstorage = { doCheck = false; };
   numpy = {
     preBuild = ''export BLAS=${pkgs.blas} LAPACK=${pkgs.liblapack}'';
     setupPyBuildFlags = ["--fcompiler='gnu95'"];
-    buildInputs = [ pkgs.gfortran ];
-    propagatedBuildInputs = [ pkgs.liblapack pkgs.blas ];
+    buildInputs = [ pkgs.gfortran pkgs.liblapack pkgs.blas ];
+    doCheck = false;
+  };
+  scipy = {
+    preBuild = ''export BLAS=${pkgs.blas} LAPACK=${pkgs.liblapack}'';
+    setupPyBuildFlags = ["--fcompiler='gnu95'"];
+    buildInputs = [ pkgs.gfortran pkgs.liblapack pkgs.blas ];
+    preConfigure = ''
+      export BLAS=${pkgs.blas} LAPACK=${pkgs.liblapack}
+      sed -i '0,/from numpy.distutils.core/s//import setuptools;from numpy.distutils.core/' setup.py
+    '';
+    doCheck = false;
   };
   almir = p: {
     buildInputs = p.buildInputs ++ [pkgs.which pkgs.bacula];

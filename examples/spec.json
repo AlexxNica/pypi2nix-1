@@ -1,12 +1,17 @@
 [
   "graph-explorer",
   {
-    "spec": "numpy",
+    "spec": "psycopg2",
     "envs": ["python26", "python27", "python33", "pypy"]
   },
   {
+    "spec": "numpy",
+    "envs": ["python26", "python27", "python33", "pypy"] 
+  },
+  {
     "spec": "scipy",
-    "envs": ["python26", "python27", "python33", "pypy"]
+    "envs": ["python26", "python27", "python33", "pypy"],
+    "override": {"append_deps": ["numpy"]}
   },
   {
     "spec": "django",
@@ -30,8 +35,9 @@
     "envs": ["python26", "python27", "python33", "pypy"]
   },
   {
-    "spec": "almir",
-    "override": {"versions": ["sqlalchemy==0.7.10", "pyramid_jinja2==1.9"]}
+    "spec": "almir==0.1.8",
+    "envs": ["python27"], 
+    "versions": ["https://raw.githubusercontent.com/iElectric/almir/0.1.8/buildout.d/versions.cfg"]
   },
   {
     "spec": "graphite-api",
@@ -50,10 +56,13 @@
      }
   },
   {
-    "spec": "Plone==4.3.3",
+    "spec": "Plone",
     "envs": ["python27"],
-    "override": {
-      "versions": ["http://dist.plone.org/release/{{ spec.pinned }}/versions.cfg"]
-    }
+    "versions": ["http://dist.plone.org/release/4.3.3/versions.cfg"]
+  }, 
+  {
+    "spec": "RelStorage",
+    "envs": ["python27"],
+    "versions": ["http://dist.plone.org/release/4.3.3/versions.cfg"]
   }
 ]

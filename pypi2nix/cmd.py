@@ -14,8 +14,11 @@ from .caching import PersistentCache, hashabledict
 from .datastructures import Spec, SpecSet, first
 
 env = Environment(loader=PackageLoader('pypi2nix', 'templates'))
-pypi2nix_template = env.get_template('python-packages-generated.nix.jinja2')
 env.globals['toset'] = lambda x: set(x)
+env.filters["surround_by_quote"] = \
+    lambda a_list: ['"%s"' % an_element for an_element in a_list]
+
+pypi2nix_template = env.get_template('python-packages-generated.nix.jinja2')
 
 
 def setup_logging(verbose):
@@ -246,8 +249,8 @@ def main():
 
     # Parse enabled environemnts
     default_envs = ["python27"]
-    enabled_envs = args.enabled_envs or default_envs
-    enabled_envs = enabled_envs.split(",")
+    enabled_envs = \
+        (args.enabled_envs and args.enabled_envs.split(",")) or envs.keys()
     logger.info("=> Enabled envs: %s", enabled_envs)
 
     # Load overrides
@@ -342,7 +345,7 @@ def main():
 
                 pkgs, alias = envs[env].resolve(
                     specs=set([spec]),
-                    #versions=set([s for s in info.get("versions")]),
+                    versions=info.get("versions"),
                     overrides=local_overrides
                 )
                 resolved_alias[env].update(alias)

@@ -40,7 +40,6 @@ class PackageResolver(object):
             cache=cache, download_cache_root=download_cache_root,
             link_hook=self._link_hook,
             dependency_hook=self._dependency_hook,
-            version_hook=self._version_hook,
             spec_hook=self._spec_hook
         )
 
@@ -67,11 +66,11 @@ class PackageResolver(object):
                     request = requests.get(url)
                     versions.update(parse(request.text))
 
-                if parser.has_section('versions'):
-                    versions.update({
-                        package: version
-                        for package, version in parser.items('versions')
-                    })
+            if parser.has_section('versions'):
+                versions.update({
+                    package: version
+                    for package, version in parser.items('versions')
+                })
 
             return versions
 
@@ -91,7 +90,7 @@ class PackageResolver(object):
 
         return versions, set()
 
-    def _parse_versions(self, overrided_versions, spec, package):
+    def _parse_versions(self, overrided_versions, spec=None, package=None):
         versions = set()
         links = set()
         content = None
@@ -102,12 +101,16 @@ class PackageResolver(object):
                 line, extra = line[0], (line[1],)
 
             # Pass line through template and parse as url
-            url = urlparse(env.from_string(line).render({"spec": spec}))
+            url = urlparse(
+                env.from_string(line).render({"spec": spec} if spec else {})
+            )
             if not url.scheme:
                 versions.update([Spec.from_line(line, extra=extra, source="overrides")])
-            elif url.scheme == "file":
+            elif url.scheme == "file" and package:
+                logger.info('===> Getting version from ' + url.geturl())
                 content = package.read_file(url.netloc + url.path)
             elif url.scheme == "http" or url.scheme == "https":
+                logger.info('===> Getting version from ' + url.geturl())
                 content = requests.get(url.geturl()).content
 
             if content:
@@ -121,19 +124,6 @@ class PackageResolver(object):
                 links.update(_links)
 
         return versions
-
-    def _version_hook(self, overrides, spec, package):
-        overrides = overrides or {}
-        if overrides.get("versions"):
-            logger.info(
-                '===> version overrides %s found for package %s',
-                overrides, spec)
-
-            versions = self._parse_versions(
-                overrides.get("versions"), spec, package)
-            return versions
-        else:
-            return set()
 
     def _link_hook(self, overrides, spec, link):
         overrides = overrides or {}
@@ -157,7 +147,7 @@ class PackageResolver(object):
 
     def _dependency_hook(self, overrides, spec, deps, package):
         """Hook for adding or replacing dependencies"""
-        new_deps = set()
+        new_deps = []
         overrides = overrides or {}
 
         if any(k in overrides for k in ("append_deps", "new_deps", "replace_deps")):
@@ -170,38 +160,37 @@ class PackageResolver(object):
             overrides.get("new_deps", tuple()),
             spec, package
         ):
-            new_deps.update([dep])
+            new_deps.append((dep, None))
 
         # If we are not replacing all dependencies, just append then to deps
         if not overrides.get("new_deps"):
-            new_deps = deps.union(new_deps)
+            new_deps = deps + new_deps
 
         # Replace defined dependencies
         if overrides.get("replace_deps"):
             # Override dependencies for package
             new_deps = set([
-                Spec.from_line(override, source="dependency_hook")
-                if dep.name == name else dep
-                for dep in new_deps
+                (Spec.from_line(override, source="dependency_hook"), src)
+                if dep.name == name else (dep, src)
+                for dep, src in new_deps
                 for name, override in
                 overrides.get("replace_deps").iteritems()
             ])
 
         # Remove dependencies
         if overrides.get("remove_deps"):
-            new_deps = set([
-                d for d in new_deps
-                if d.name not in overrides.get("remove_deps")
-            ])
+            new_deps = [
+                (dep, src) for dep, src in new_deps
+                if dep.name not in overrides.get("remove_deps")
+            ]
 
         # If testing profile is top_level and it is top_level package,
         # or testing_profile is none, then remove testing dependencies
         if not (self.test_profile == "top_level" and overrides.get("tlp")) or \
                 self.test_profile == "none":
             new_deps = [
-                s for s in new_deps
-                if (s.extra and s.extra[0] not in self.test_extra)
-                or not s.extra
+                (dep, src) for dep, src in new_deps
+                if (src and src not in self.test_extra) or not src
             ]
 
         return new_deps
@@ -246,14 +235,14 @@ class PackageResolver(object):
             _overrides[spec.name].update(hashabledict(tlp=True))
             tlp.append(spec.name)
 
-        # Add picked versions to spec set
-        for spec in versions:
-            spec_set.add_spec(spec)
+        # Parses versions
+        versions = self._parse_versions(versions)
 
         # Create package manager
         package_manager = self.package_manager(
             extra=tuple(set(self.extra + self.test_extra + extra)),
             overrides=_overrides,
+            versions=versions,
             dependency_links=dependency_links,
         )
 
@@ -287,7 +276,7 @@ class PackageResolver(object):
                 hash = package_manager.get_hash(link)
                 pkg = {
                     "name": spec.name,
-                    "fullname": spec.name + "-" + spec.pinned,
+                    "fullname": spec.fullname,
                     "version": spec.pinned,
                     "extra": spec.extra,
                     "src": {
@@ -307,21 +296,21 @@ class PackageResolver(object):
                 deps = package_manager.get_dependencies(
                     spec.name, spec.pinned, spec.extra)
 
-                for dep in deps:
+                for dep, section in deps:
                     pinned_dep = first(pinned._byname[dep.name])
-                    section = dep.extra[0] if dep.extra else None
 
                     # skip dependencies pointing to ourself (recursive dependencies)
                     if spec.fullname == pinned_dep.fullname:
                         continue
 
+                    full_dep = (pinned_dep.fullname, dep.extra)
                     if not section:
-                        pkg["deps"].append(pinned_dep.fullname)
+                        pkg["deps"].append(full_dep)
                     else:
                         if section not in pkg["extra"]:
-                            pkg["extra"][section] = [pinned_dep.fullname]
+                            pkg["extra"][section] = [full_dep]
                         else:
-                            pkg["extra"][section].append(pinned_dep.fullname)
+                            pkg["extra"][section].append(full_dep)
 
                 result[spec.fullname] = pkg
 
@@ -330,9 +319,10 @@ class PackageResolver(object):
                 return pkg
 
             new_deps = [
-                _remove_circular_deps(
-                    result[dep], visited + [pkg["fullname"]])["fullname"]
-                for dep in pkg["deps"] if not dep in visited
+                (_remove_circular_deps(
+                    result[dep], visited + [pkg["fullname"]]
+                )["fullname"], extra)
+                for dep, extra in pkg["deps"] if not dep in visited
             ]
             if new_deps != pkg["deps"]:
                 logger.info('- Circular deps detected in package %s' %pkg["fullname"])
@@ -341,9 +331,10 @@ class PackageResolver(object):
 
             for section in pkg["extra"]:
                 new_deps = [
-                    _remove_circular_deps(
-                        result[dep], visited + [pkg["fullname"]])["fullname"]
-                    for dep in pkg["extra"][section] if not dep in visited
+                    (_remove_circular_deps(
+                        result[dep], visited + [pkg["fullname"]]
+                    )["fullname"], extra)
+                    for dep, extra in pkg["extra"][section] if not dep in visited
                 ]
                 if new_deps != pkg["extra"][section]:
                     logger.info(
@@ -357,11 +348,12 @@ class PackageResolver(object):
 
         logger.info('===> Removing circular dependencies')
 
-        if self.remove_circular_deps:
-            for name, pkg in result.iteritems():
-                _remove_circular_deps(pkg)
-
         get_pinned = lambda name: next((s for s in pinned if s.name == name))
+
+        if self.remove_circular_deps:
+            for target_spec in target_specs:
+                _remove_circular_deps(
+                        result[get_pinned(target_spec.name).fullname])
 
         return (
             result, {

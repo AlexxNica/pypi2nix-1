@@ -33,19 +33,33 @@ let
     )
   );
 
+  callPythonPackage = args@ { name, installRequires, extra ? {}, ... }: use_extra:
+    overridablePythonPackage ((args // {extra="";}) // {
+      propagatedBuildInputs =
+        installRequires ++
+        (map (ex: attrByPath [ex] [] extra) use_extra);
+      name = name +
+        (optionalString (use_extra!=[]) "-") + 
+        (concatStringsSep "_" use_extra);
+    });
+
 in {}
 ############### Aliases #####################################################
 {% for env, pkgs in resolved_alias.iteritems() %}
 // (optionalAttrs (pythonName == "{{ env }}") {
-  {% for name, pkg in pkgs.iteritems() %}
-  "{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["name"] }}-{{ resolved_pkgs[env][pkg.fullname]["version"] }}";
-  generated."{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["name"] }}-{{ resolved_pkgs[env][pkg.fullname]["version"] }}";
-  {% if pkg.extra %}{% for extra in pkg.extra %}
-  {% if extra[0] != "_" %}by-extra.{{extra}}."{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["name"] }}-{{ resolved_pkgs[env][pkg.fullname]["version"] }}";{% endif %}{% endfor %}
-  {% else %}
-  by-extra.default."{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["name"] }}-{{ resolved_pkgs[env][pkg.fullname]["version"] }}";
-  {% endif %}
-  {% endfor %}
+  {% for name, pkg in pkgs.iteritems() -%}
+    "{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["fullname"] }}" [];
+    generated."{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["fullname"] }}" [];
+    {% if pkg.extra -%}
+      {% for extra in pkg.extra -%}
+        {% if extra[0] != "_" -%}
+          by-extra.{{extra}}."{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["fullname"] }}" [];
+        {% endif -%}
+      {% endfor -%}
+    {% else -%}
+    by-extra.default."{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["name"] }}-{{ resolved_pkgs[env][pkg.fullname]["version"] }}" [];
+    {% endif -%}
+  {% endfor -%}
 })
 {% endfor %}
 
@@ -54,7 +68,7 @@ in {}
 {% for env, pkgs in resolved_pkgs.iteritems() %}
 // (optionalAttrs (pythonName == "{{ env }}") {
   {% for name, pkg in pkgs.iteritems() %}
-  by-version."{{ pkg["name"] }}-{{ pkg["version"] }}" = overridablePythonPackage {
+  by-version."{{ pkg["fullname"] }}" = callPythonPackage {
     name = "{{ pkg["name"] }}-{{ pkg["version"] }}";
     basename = "{{ pkg["name"] }}";
     version = "{{ pkg["version"] }}";
@@ -64,21 +78,29 @@ in {}
         {{ pkg["src"]["algo"] }} = "{{ pkg["src"]["sum"] }}";
     };
 
-    doCheck = {% if pkg["has_tests"] %}true{% else %}false{% endif %};
+    doCheck = {%- if pkg["has_tests"] -%}true{%- else -%}false{%- endif %};
 
-    {% if pkg["has_circular_deps"] %}installCommand=''easy_install --always-unzip --no-deps --prefix="$out" .'';{% endif %}
+    {%- if pkg["has_circular_deps"] -%}installCommand=''easy_install --always-unzip --no-deps --prefix="$out" .'';{%- endif %}
 
-    buildInputs = [ {% for p in toset(
+    buildInputs = [{%- for p in toset(
         pkg["extra"].get("test", []) +
         pkg["extra"].get("tests", []) +
         pkg["extra"].get("testing", []) +
         pkg["extra"].get("_tests_require", []) +
         pkg["extra"].get("_test_suite", [])
-    ) %}self.by-version."{{p}}" {% endfor %}];
-    propagatedBuildInputs = [
-      {% for p in toset(pkg["deps"]) %}self.by-version."{{p}}" {% endfor %}
-      {% for extra in pkg["extra"] if extra not in test_extra %}{% for p in toset(pkg["extra"].get(extra, [])) %}self.by-version."{{p}}" {% endfor %}{% endfor %}
+    ) -%}(self.by-version."{{p[0]}}" [{{p[1] | surround_by_quote | join(' ')}}]) {% endfor %}];
+    installRequires = [
+      {%- for p in toset(pkg["deps"] + pkg["extra"].get("_setup_requires", [])) -%}
+        (self.by-version."{{p[0]}}" [{{p[1] | surround_by_quote | join(' ')}}]) {% endfor -%}
     ];
+    extra = {
+      {% for extra in pkg["extra"] if extra not in test_extra %}
+      {{extra}} = [
+        {%- for p in toset(pkg["extra"].get(extra, [])) -%}
+          (self.by-version."{{p[0]}}" [{{p[1] | surround_by_quote | join(' ')}}]) {% endfor -%}
+      ];
+      {%- endfor %}
+    };
   };
   {% endfor %}
 })

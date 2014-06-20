@@ -61,8 +61,8 @@ class DependencyResolver(object):
         new_spec_set = SpecSet()
         for spec in self.spec_set.normalize():
             best_version = self.pkgmgr.find_best_match(spec)
-            pinned_spec = Spec(spec.name, [('==', best_version)], spec.source, spec.extra)
-            new_spec_set.add_spec(pinned_spec)
+            spec.pinned = best_version
+            new_spec_set.add_spec(spec)
         return new_spec_set
 
     def find_all_dependencies(self):
@@ -76,15 +76,14 @@ class DependencyResolver(object):
         for spec in spec_set.normalize():
             version = pkgmgr.find_best_match(spec)
             pkg_deps = pkgmgr.get_dependencies(spec.name, version, spec.extra)
-            pkg_versions = pkgmgr.get_versions(spec.name, version, spec.extra)
 
             # Append source information to the new specs
             if spec.source:
-                source = '%s ~> %s==%s' % (spec.source, spec.name, version)
+                source = '%s ~> %s' % (spec.source, spec)
             else:
-                source = '%s==%s' % (spec.name, version)
+                source = '%s' % spec
 
-            for d in pkg_deps.union(pkg_versions):
+            for d, _ in pkg_deps:
                 deps.update([d.add_source(source)])
 
         return deps

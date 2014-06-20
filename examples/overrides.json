@@ -4,5 +4,5 @@
   },
   "pypy": {
     "psycopg2": {"spec": "psycopg2cffi"}
-  }
+  } 
 }

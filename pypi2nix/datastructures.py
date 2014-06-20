@@ -99,6 +99,10 @@ class Spec(object):
         return self.name + "-" + self.pinned
 
     @property
+    def fullname_with_extra(self):
+        return self.fullname + ("-" + "_".join(self.extra)) if self.extra else ""
+
+    @property
     def preds(self):
         return self._preds
 
@@ -122,6 +126,14 @@ class Spec(object):
         _, pred = first(self._preds)
         return pred
 
+    @pinned.setter
+    def pinned(self, version):
+        self._preds = [('==', version)]
+
+    @property
+    def no_extra(self):
+        return self.description(with_extra=False, with_source=False)
+
     def description(self, with_source=True, with_extra=True):  # noqa
         qualifiers = ','.join(map(''.join, sorted(self.preds, cmp=spec_cmp)))
         source = ''
@@ -129,11 +141,11 @@ class Spec(object):
         if with_source and self.source:
             source = ' (from %s)' % (self.source)
         if with_extra and self.extra:
-            extra = ' (extra %s)' % (", ".join(self.extra))
-        return '%s%s%s%s' % (self.name, qualifiers, source, extra)
+            extra = '[%s]' % (", ".join(self.extra))
+        return '%s%s%s%s' % (self.name, extra, qualifiers, source)
 
     def __str__(self):
-        return self.description(with_source=False, with_extra=False)
+        return self.description(with_source=False, with_extra=True)
 
     def __unicode__(self):
         return unicode(str(self))
@@ -143,11 +155,15 @@ class Spec(object):
 
     def __eq__(self, other):
         return (self.name == other.name and
-                self.preds == other.preds)
+                self.preds == other.preds and
+                #self.source == other.source and
+                self.extra == other.extra)
 
     def __hash__(self):
         return (hash(self.name) ^
-                hash(frozenset(self.preds)))
+                hash(frozenset(self.preds)) ^
+                #hash(self.source) ^
+                hash(self.extra))
 
 
 class SpecSet(object):
@@ -401,11 +417,11 @@ class SpecSet(object):
         source = ' and '.join(sorted(used_sources, key=lambda item: item.lower()))
 
         # Lookup which extra where used for this normalized spec set
-        extra = ()
+        extra = set()
         for spec in self._byname[name]:
-            extra += tuple(spec.extra)
+            extra.update(spec.extra)
 
-        return Spec(name, preds, source, extra=extra)
+        return Spec(name, preds, source, extra=tuple(extra))
 
     def normalize(self):
         """Generates a new spec set that is more compact, but equivalent to

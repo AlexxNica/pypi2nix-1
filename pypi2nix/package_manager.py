@@ -102,11 +102,9 @@ class Package(object):
             ):
                 deps += [('nose', '_test_suite')]
 
-        # Convert to specs before returning
-        return set([
-            (Spec.from_line(dep, extra=(extra,)) if extra else
-             Spec.from_line(dep)) for dep, extra in deps
-        ])
+        #logger.debug('Found: %s' % (deps,))
+
+        return [(Spec.from_line(dep), src) for dep, src in deps if "#" not in dep]
 
     def get_pkginfo(self):
         """Gets package info by reading PKG-INFO file"""
@@ -200,7 +198,6 @@ class Package(object):
 
         deps = self._read_package_requires_file(extra)
 
-        logger.debug('Found: %s' % (deps,))
         return deps
 
     def _read_package_requires_file(self, extra=()):
@@ -228,7 +225,6 @@ class Package(object):
                 if not skip_section:
                     deps.append((dep, section))
 
-        logger.debug('Found: %s' % (deps,))
         return deps
 
     def _get_package_egg_info_path(self):
@@ -313,21 +309,20 @@ class PackageManager(object):
     """Interface to packages."""
 
     def __init__(
-        self, overrides={}, extra=(), dependency_links=[],
+        self, overrides={}, versions=[], extra=(), dependency_links=[],
         exe=sys.executable, python_path="",
         download_cache_root="", cache=None,
         link_hook=lambda overrides, spec, link: (link, None),
         dependency_hook=lambda overrides, spec, deps, package: deps,
-        version_hook=lambda overrides, spec, package: [],
         spec_hook=lambda overrides, spec: spec
     ):
         self.extra = extra
         self.exe, self.python_path = exe, python_path
         self.overrides = overrides or {}
+        self.versions = versions or []
 
         self._dependency_hook = dependency_hook
         self._link_hook = link_hook
-        self._version_hook = version_hook
         self._spec_hook = spec_hook
 
         self.finder = PackageFinder(
@@ -344,12 +339,10 @@ class PackageManager(object):
         cache = cache or defaultdict(dict)
         self._link_cache = cache["link_cache"]
         self._dep_cache = cache["dep_cache"]
-        self._version_cache = cache["version_cache"]
         self._pkg_info_cache = cache["pkg_info_cache"]
         self._extract_cache = cache["extract_cache"]
         self._best_match_call_cache = {}
         self._dep_call_cache = {}
-        self._version_call_cache = {}
         self._pkg_info_call_cache = {}
 
     def find_best_match(self, spec):
@@ -368,8 +361,8 @@ class PackageManager(object):
             overrides = self.overrides.get(spec.name)
 
             ## Try the link cache, and otherwise, try PyPI
-            if (spec, overrides) in self._link_cache:
-                link, version = self._link_cache[(spec, overrides)]
+            if (spec.no_extra, overrides) in self._link_cache:
+                link, version = self._link_cache[(spec.no_extra, overrides)]
                 source = 'link cache'
             else:
                 try:
@@ -399,23 +392,28 @@ class PackageManager(object):
                     version = spec.pinned
 
                 assert version, "Version must be set!"
-                self._link_cache[(spec, overrides)] = (link, version)
+                self._link_cache[(spec.no_extra, overrides)] = (link, version)
 
                 # Take this moment to smartly insert the pinned variant of this
                 # spec into the link_cache, too
                 pinned_spec = Spec.from_pinned(spec.name, version)
-                self._link_cache[pinned_spec] = (link, version)
+                self._link_cache[pinned_spec.fullname] = (link, version)
 
             return version, source
 
-        specline = str(spec)
+        version = next((v for v in self.versions if v.name == spec.name), None)
+        if version:
+            spec.pinned = version.pinned
+
+        specline = spec.no_extra
         if '==' not in specline or specline not in self._best_match_call_cache:
             logger.debug('- Finding best package matching %s' % spec)
+        version = next((v for v in self.versions if v.name == spec.name), None)
         with logger.indent():
             version, source = _find_cached_match(spec)
         if '==' not in specline or specline not in self._best_match_call_cache:
             logger.debug('  Found best match: %s (from %s)' % (version, source))
-        self._best_match_call_cache[spec] = True
+        self._best_match_call_cache[specline] = True
 
         return version
 
@@ -423,6 +421,7 @@ class PackageManager(object):
         """Gets list of dependencies from package"""
         spec = Spec.from_pinned(name, version, extra=extra)
         overrides = self.overrides.get(spec.name)
+        extra = self.extra + extra
 
         if spec not in self._dep_call_cache:
             logger.debug('- Getting dependencies for %s-%s' % (name, version))
@@ -434,7 +433,7 @@ class PackageManager(object):
             else:
                 package = self.get_package(spec)
 
-                deps = package.get_deps(extra=self.extra + extra)
+                deps = package.get_deps(extra=extra)
                 deps = self._dependency_hook(overrides, spec, deps, package)
                 self._dep_cache[(spec, overrides)] = deps
 
@@ -444,10 +443,11 @@ class PackageManager(object):
                 source = 'package archive'
 
         # Run spec hook
-        deps = set([
-            self._spec_hook(self.overrides.get(dep.name), dep)
-            if self.overrides.get(dep.name) else dep
-            for dep in deps])
+        deps = [
+            (self._spec_hook(self.overrides.get(dep.name), dep), src)
+            if self.overrides.get(dep.name) else (dep, src)
+            for dep, src in deps
+        ]
 
         if spec not in self._dep_call_cache:
             logger.debug('  Found: %s (from %s)' % (deps, source))
@@ -458,39 +458,13 @@ class PackageManager(object):
         self._dep_call_cache[spec] = True
         return deps
 
-    def get_versions(self, name, version, extra=()):
-        """Gets list of pinned versions from package"""
-        spec = Spec.from_pinned(name, version, extra=extra)
-        overrides = self.overrides.get(spec.name)
-        versions = set()
-
-        if spec not in self._version_call_cache:
-            logger.debug('- Getting versions for %s-%s' % (name, version))
-        with logger.indent():
-            versions = self._version_cache.get((spec, overrides), None)
-            if versions is not None:
-                source = 'version cache'
-            else:
-                if overrides:
-                    package = self.get_package(spec)
-                    versions = self._version_hook(overrides, spec, package)
-                    self._version_cache[(spec, overrides)] = versions
-
-                source = 'package archive'
-
-        if spec not in self._version_call_cache:
-            logger.debug('  Found: %s (from %s)' % (versions, source))
-
-        self._version_call_cache[spec] = True
-        return versions or set()
-
     def get_pkg_info(self, name, version):
         spec = Spec.from_pinned(name, version)
 
-        if spec not in self._pkg_info_call_cache:
+        if spec.no_extra not in self._pkg_info_call_cache:
             logger.debug('- Getting pkginfo for %s-%s' % (name, version))
         with logger.indent():
-            pkg_info = self._pkg_info_cache.get(spec)
+            pkg_info = self._pkg_info_cache.get(spec.no_extra)
             if pkg_info is not None:
                 source = 'pkg_info cache'
             else:
@@ -498,20 +472,20 @@ class PackageManager(object):
 
                 pkg_info = package.get_pkginfo()
                 pkg_info["has_tests"] = package.has_tests()
-                self._pkg_info_cache[spec] = pkg_info
+                self._pkg_info_cache[spec.no_extra] = pkg_info
                 source = 'package archive'
 
-        if spec not in self._pkg_info_call_cache:
+        if spec.no_extra not in self._pkg_info_call_cache:
             logger.debug('  Found pkg_info (from %s)' % (source,))
 
-        self._pkg_info_call_cache[spec] = True
+        self._pkg_info_call_cache[spec.no_extra] = True
         return pkg_info
 
     def get_link(self, name, version):
         logger.debug('- Getting link for %s-%s' % (name, version))
         spec = Spec.from_pinned(name, version)
         self.find_best_match(spec)
-        return self._link_cache[spec]
+        return self._link_cache[spec.fullname]
 
     def get_hash(self, link):
         if link.hash and link.hash_name:
@@ -533,7 +507,7 @@ class PackageManager(object):
             return md5hash(self._download_package(link))
 
     def get_package(self, spec):
-        path = self._get_or_download_package(spec)
+        path = self._get_or_download_package(spec.fullname)
         return Package(
             package_dir=self._extract(path),
             exe=self.exe, python_path=self.python_path
