@@ -106,7 +106,7 @@ def parse_specline(specline, default_envs):
         penvs = {}
         top_level = _parse_scope(specline)
 
-        if isinstance(specline.get("envs"), collections.Iterable):
+        if isinstance(specline.get("envs"), (list, tuple)):
             envs = {name: {} for name in specline.get("envs")}
         elif isinstance(specline.get("envs"), dict):
             envs = specline.get("envs").copy()
@@ -344,7 +344,7 @@ def main():
                 local_overrides.update(info.get("overrides"))
 
                 pkgs, alias = envs[env].resolve(
-                    specs=set([spec]),
+                    specs=set([(spec, None)]),
                     versions=info.get("versions"),
                     overrides=local_overrides
                 )

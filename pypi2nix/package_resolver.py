@@ -229,7 +229,7 @@ class PackageResolver(object):
         tlp = []  # Top level packages
 
         # Add specs to spec_set and add override for spec as top level packages
-        for spec in target_specs:
+        for spec, source in target_specs:
             spec_set.add_spec(spec)
             _overrides[spec.name] = _overrides.get(spec.name, hashabledict())
             _overrides[spec.name].update(hashabledict(tlp=True))
@@ -348,18 +348,17 @@ class PackageResolver(object):
 
         logger.info('===> Removing circular dependencies')
 
-        get_pinned = lambda name: next((s for s in pinned if s.name == name))
+        def get_pinned(name):
+            return next((s for s in pinned if s.name == name))
 
         if self.remove_circular_deps:
-            for target_spec in target_specs:
+            for target_spec, source in target_specs:
                 _remove_circular_deps(
-                        result[get_pinned(target_spec.name).fullname])
+                    result[get_pinned(target_spec.name).fullname])
 
         return (
             result, {
-                target_spec.name:
-                get_pinned(target_spec.name) for target_spec in target_specs
+                spec.name:
+                (get_pinned(spec.name), src) for spec, src in target_specs
             }
         )
-
-

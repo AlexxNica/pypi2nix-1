@@ -47,18 +47,13 @@ in {}
 ############### Aliases #####################################################
 {% for env, pkgs in resolved_alias.iteritems() %}
 // (optionalAttrs (pythonName == "{{ env }}") {
-  {% for name, pkg in pkgs.iteritems() -%}
-    "{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["fullname"] }}" [];
-    generated."{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["fullname"] }}" [];
-    {% if pkg.extra -%}
-      {% for extra in pkg.extra -%}
-        {% if extra[0] != "_" -%}
-          by-extra.{{extra}}."{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["fullname"] }}" [];
-        {% endif -%}
-      {% endfor -%}
-    {% else -%}
-    by-extra.default."{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["name"] }}-{{ resolved_pkgs[env][pkg.fullname]["version"] }}" [];
-    {% endif -%}
+  {%- for name, (pkg, source) in pkgs.iteritems() %}
+    "{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["fullname"] }}" [{% for extra in pkg.extra %}{% if extra[0] != "_" -%}
+"{{extra}}" {% endif %}{% endfor %}];
+    generated."{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["fullname"] }}" [{% for extra in pkg.extra %}{% if extra[0] != "_" -%}
+"{{extra}}" {% endif %}{% endfor %}];
+    by-extra."{{ source or "default" }}"."{{ name }}" = self.by-version."{{ resolved_pkgs[env][pkg.fullname]["fullname"] }}" [{% for extra in pkg.extra %}{% if extra[0] != "_" -%}
+"{{extra}}" {% endif %}{% endfor %}];
   {% endfor -%}
 })
 {% endfor %}
