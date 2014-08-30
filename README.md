@@ -175,13 +175,6 @@ Internal format:
 }
 ```
 
-Abcd
-====
-
-```
-abcd
-```
-
 Testing
 =======
 
